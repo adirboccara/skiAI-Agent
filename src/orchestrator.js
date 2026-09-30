@@ -138,18 +138,50 @@ const PREFERENCE_KEYS = [
   'skiKmImportance',
   'crowdTolerance',
   'requiresSkiInOut',
+  'preferredTimeframe',
 ];
 
 const DESTINATION_SYSTEM_PROMPT = `You are the Destination Agent in a ski vacation planner.
 Choose the single resort from "available_resorts" that best matches "user_preferences".
 Weigh vibe, nightlife, crowdedness and ski area size. If "requiresSkiInOut" is true, prefer resorts with skiInSkiOutAvailable = true.
+If "preferredTimeframe" is given, prefer resorts whose optimalSnowWeeks match it.
+Then recommend when to go: copy exactly ONE entry from the chosen resort's "optimalSnowWeeks", the one closest to "preferredTimeframe" (or the best one if no timeframe is given).
 "previous_failures" lists resorts already rejected by the budget and constraint checks and why; learn from them.
-Use ONLY the data provided. Do not mention or estimate prices, and do not invent facts about resorts.
+Use ONLY the data provided. Do not mention or estimate prices, and do not invent facts about resorts or dates.
 Respond with JSON only, in exactly this shape:
-{"selected_resort_id": "<one id from available_resorts>", "reasoning": "<one or two sentences>"}`;
+{"selected_resort_id": "<one id from available_resorts>", "recommendedDates": "<one entry from that resort's optimalSnowWeeks>", "reasoning": "<one or two sentences>"}`;
 
-// Asks the LLM to pick one resort. Throws LlmResponseError if the reply is not
-// one of the offered resort ids.
+const MONTHS = [
+  'january', 'february', 'march', 'april', 'may', 'june',
+  'july', 'august', 'september', 'october', 'november', 'december',
+];
+
+// Month names mentioned in free text, e.g. "late Jan or February" -> ['february'].
+// Only full month names count, so the check never guesses at abbreviations.
+function monthsIn(text) {
+  const words = String(text).toLowerCase().match(/[a-z]+/g) ?? [];
+  return MONTHS.filter((month) => words.includes(month));
+}
+
+// Deterministic gate on the agent's date pick: it must be one of the resort's
+// optimalSnowWeeks, and when the user named a month that the resort has good
+// weeks in, it must be in that month. Returns an error message or null.
+export function checkRecommendedDates(recommendedDates, resort, preferredTimeframe) {
+  if (!resort.optimalSnowWeeks.includes(recommendedDates)) {
+    return `Destination Agent recommended "${recommendedDates}" for ${resort.name}, which is not one of its optimalSnowWeeks`;
+  }
+  if (preferredTimeframe) {
+    const wanted = monthsIn(preferredTimeframe);
+    const resortHasWantedMonth = resort.optimalSnowWeeks.some((week) => monthsIn(week).some((m) => wanted.includes(m)));
+    if (resortHasWantedMonth && !monthsIn(recommendedDates).some((m) => wanted.includes(m))) {
+      return `Destination Agent recommended "${recommendedDates}" for ${resort.name}, but the user asked for "${preferredTimeframe}" and the resort has good snow then`;
+    }
+  }
+  return null;
+}
+
+// Asks the LLM to pick one resort and a week to go. Throws LlmResponseError if
+// the resort is not one of the offered ids or the dates fail checkRecommendedDates.
 export async function destinationAgent(preferences, resorts, previousFailures, { llm = callOpenRouter } = {}) {
   const userPreferences = Object.fromEntries(
     PREFERENCE_KEYS.filter((key) => preferences[key] !== undefined).map((key) => [key, preferences[key]]),
@@ -169,14 +201,19 @@ export async function destinationAgent(preferences, resorts, previousFailures, {
 
   const reply = await llm(messages);
   const selectedResortId = reply?.selected_resort_id;
-  if (!resorts.some((resort) => resort.id === selectedResortId)) {
+  const resort = resorts.find((candidate) => candidate.id === selectedResortId);
+  if (!resort) {
     throw new LlmResponseError(
       `Destination Agent selected "${selectedResortId}", which is not one of the offered resorts`,
     );
   }
 
+  const datesProblem = checkRecommendedDates(reply.recommendedDates, resort, preferences.preferredTimeframe);
+  if (datesProblem) throw new LlmResponseError(datesProblem);
+
   return {
     selectedResortId,
+    recommendedDates: reply.recommendedDates,
     reasoning: typeof reply.reasoning === 'string' ? reply.reasoning : '',
   };
 }
@@ -386,6 +423,7 @@ export async function runPipeline(
         status: 'success',
         ...result.package,
         maxBudget: userRequest.maxBudget,
+        recommendedDates: choice.recommendedDates,
         destinationReasoning: choice.reasoning,
         negotiationRounds: round,
         previousFailures,

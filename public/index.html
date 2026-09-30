@@ -58,6 +58,12 @@
       <fieldset class="trip__group">
         <legend class="trip__legend">Preferences</legend>
 
+        <label class="field">
+          <span class="field__label">When do you want to go?</span>
+          <input name="preferredTimeframe" type="text" maxlength="60" placeholder="e.g. Late January" autocomplete="off">
+          <span class="field__hint">Optional. You'll get the resort's best snow week closest to this.</span>
+        </label>
+
         <div class="field">
           <span class="field__label" id="vibe-label">Vibe</span>
           <div class="segmented" role="radiogroup" aria-labelledby="vibe-label">
@@ -125,13 +131,13 @@
               <h3 class="ticket__resort" id="ticket-resort"></h3>
               <ul class="ticket__tags" id="ticket-tags"></ul>
             </header>
-            <table class="items">
-              <caption class="visually-hidden">Package items</caption>
-              <thead>
-                <tr><th scope="col">Item</th><th scope="col">Price</th><th scope="col"><span class="visually-hidden">Link</span></th></tr>
-              </thead>
-              <tbody id="ticket-items"></tbody>
-            </table>
+            <div class="dates">
+              <p class="dates__label">Best week to go</p>
+              <p class="dates__value" id="ticket-dates"></p>
+              <p class="field__hint">Picked from this resort's best snow weeks.</p>
+            </div>
+            <ul class="items" id="ticket-items" aria-label="Package items"></ul>
+            <p class="items__note">Booking links open live searches on each site. Prices there may differ from the mock prices shown here.</p>
             <figure class="reasoning">
               <blockquote id="ticket-reasoning"></blockquote>
               <figcaption>Why the Destination Agent chose this resort. Its words are not used for any price.</figcaption>

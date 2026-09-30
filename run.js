@@ -19,6 +19,7 @@ const userRequest = {
   vibe: 'young', // mock resorts use 'young' (young/party) or 'family'
   nightlifeImportance: 9,
   skiKmImportance: 8,
+  preferredTimeframe: 'February',
 };
 
 try {

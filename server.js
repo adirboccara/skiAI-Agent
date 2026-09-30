@@ -10,6 +10,7 @@ import { toCents } from './src/finance.js';
 const PUBLIC_DIR = fileURLToPath(new URL('./public', import.meta.url));
 const VIBES = ['young', 'family'];
 const SCORE_FIELDS = ['nightlifeImportance', 'skiKmImportance', 'crowdTolerance', 'accommodationLevel'];
+const MAX_TIMEFRAME_LENGTH = 60;
 
 // Thrown when the client sends a request the pipeline must not see.
 export class RequestValidationError extends Error {
@@ -50,6 +51,15 @@ export function parsePlanRequest(body) {
   }
 
   const request = { maxBudget, groupSize, roomCount, requiresSkiInOut, vibe };
+
+  const { preferredTimeframe } = body;
+  if (preferredTimeframe !== undefined) {
+    if (typeof preferredTimeframe !== 'string' || preferredTimeframe.trim().length > MAX_TIMEFRAME_LENGTH) {
+      throw new RequestValidationError(`preferredTimeframe must be text of at most ${MAX_TIMEFRAME_LENGTH} characters`);
+    }
+    if (preferredTimeframe.trim()) request.preferredTimeframe = preferredTimeframe.trim();
+  }
+
   for (const field of SCORE_FIELDS) {
     const value = body[field];
     if (value === undefined) continue;

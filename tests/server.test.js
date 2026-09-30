@@ -19,6 +19,11 @@ describe('parsePlanRequest', () => {
     assert.deepEqual(request, validBody);
   });
 
+  test('trims preferredTimeframe and drops it when blank', () => {
+    assert.equal(parsePlanRequest({ ...validBody, preferredTimeframe: '  Late January ' }).preferredTimeframe, 'Late January');
+    assert.ok(!('preferredTimeframe' in parsePlanRequest({ ...validBody, preferredTimeframe: '   ' })));
+  });
+
   const invalid = {
     'a non-object body': null,
     'an array body': [],
@@ -33,6 +38,8 @@ describe('parsePlanRequest', () => {
     'an unknown vibe': { ...validBody, vibe: 'party' },
     'a preference score above 10': { ...validBody, nightlifeImportance: 11 },
     'a fractional preference score': { ...validBody, crowdTolerance: 4.5 },
+    'a non-string timeframe': { ...validBody, preferredTimeframe: 2 },
+    'a timeframe over 60 characters': { ...validBody, preferredTimeframe: 'x'.repeat(61) },
   };
   for (const [name, body] of Object.entries(invalid)) {
     test(`rejects ${name}`, () => {
@@ -72,18 +79,23 @@ describe('POST /api/plan', () => {
   }
 
   test('returns the pipeline proposal for a valid request', async () => {
-    nextReplies = [{ selected_resort_id: 'gudauri', reasoning: 'fits' }];
-    const { status, body } = await post(validBody);
+    nextReplies = [{ selected_resort_id: 'gudauri', recommendedDates: 'Early February', reasoning: 'fits' }];
+    const { status, body } = await post({ ...validBody, preferredTimeframe: 'February' });
 
     assert.equal(status, 200);
     assert.equal(body.status, 'success');
     assert.equal(body.resort.id, 'gudauri');
+    assert.equal(body.recommendedDates, 'Early February');
     assert.equal(body.total, 1770);
     assert.equal(body.maxBudget, 2200);
   });
 
   test('returns the deterministic fallback when nothing fits', async () => {
-    nextReplies = ['la-molina', 'gudauri', 'val-thorens'].map((id) => ({ selected_resort_id: id }));
+    nextReplies = [
+      { selected_resort_id: 'la-molina', recommendedDates: 'Late January' },
+      { selected_resort_id: 'gudauri', recommendedDates: 'Mid January' },
+      { selected_resort_id: 'val-thorens', recommendedDates: 'Mid January' },
+    ];
     const { status, body } = await post({ ...validBody, maxBudget: 500 });
 
     assert.equal(status, 200);

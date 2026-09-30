@@ -9,7 +9,7 @@ import {
   DEFAULT_MODEL,
   OPENROUTER_URL,
 } from '../src/orchestrator.js';
-import { getResort, getFlight, getAccommodations, getSkiPass, getGearRental } from '../src/tools/mocks.js';
+import { RESORTS, getResort, getFlight, getAccommodations, getSkiPass, getGearRental } from '../src/tools/mocks.js';
 
 // A fake LLM that returns the given replies in order and records every call.
 // An unexpected extra call fails the test.
@@ -24,7 +24,14 @@ function scriptedLlm(replies) {
   return llm;
 }
 
-const pick = (id) => ({ selected_resort_id: id, reasoning: `mock reasoning for ${id}` });
+// A valid Destination Agent reply: the resort plus its first optimal snow week.
+// Unknown ids get a placeholder week (the id check rejects them first).
+const firstWeek = (id) => RESORTS.find((r) => r.id === id)?.optimalSnowWeeks[0] ?? 'Mid January';
+const pick = (id, recommendedDates = firstWeek(id)) => ({
+  selected_resort_id: id,
+  recommendedDates,
+  reasoning: `mock reasoning for ${id}`,
+});
 
 // The JSON payload sent to the Destination Agent on a given call.
 const payloadOf = (call) => JSON.parse(call[1].content);
@@ -73,6 +80,24 @@ describe('runPipeline: success path', () => {
     for (const item of [result.flight, result.accommodation, result.skiPass, result.gear]) {
       assert.equal(item.source, 'mock');
     }
+  });
+
+  test('booking links are working vendor search URLs for the chosen resort', async () => {
+    const result = await runPipeline(baseRequest, { llm: scriptedLlm([pick('gudauri')]) });
+
+    assert.equal(result.flight.url, 'https://www.google.com/travel/flights?q=Flights%20to%20TBS');
+    assert.equal(result.accommodation.url, 'https://www.booking.com/searchresults.html?ss=Gudauri');
+    assert.equal(result.skiPass.url, 'https://www.google.com/search?q=Gudauri%20ski%20pass');
+    assert.equal(result.gear.url, 'https://www.google.com/search?q=Gudauri%20ski%20rental');
+  });
+
+  test('returns the recommendedDates chosen by the Destination Agent', async () => {
+    const llm = scriptedLlm([pick('gudauri', 'Late February')]);
+    const result = await runPipeline({ ...baseRequest, preferredTimeframe: 'February' }, { llm });
+
+    assert.equal(result.status, 'success');
+    assert.equal(result.recommendedDates, 'Late February');
+    assert.equal(payloadOf(llm.calls[0]).user_preferences.preferredTimeframe, 'February');
   });
 
   test('without ski-in/ski-out, prefers the hotel closest to the requested level', async () => {
@@ -133,6 +158,41 @@ describe('runPipeline: negotiation loop', () => {
     assert.deepEqual(result.previousFailures, []);
     assert.equal(result.agentRetries.length, 1);
     assert.match(result.agentRetries[0].message, /chamonix/);
+  });
+
+  test('dates outside the resort optimalSnowWeeks are retried, never returned', async () => {
+    const llm = scriptedLlm([pick('gudauri', 'Christmas week'), pick('gudauri', 'Mid January')]);
+    const result = await runPipeline(baseRequest, { llm, retryDelayMs: 0 });
+
+    assert.equal(result.recommendedDates, 'Mid January');
+    assert.equal(result.negotiationRounds, 1);
+    assert.match(result.agentRetries[0].message, /"Christmas week" for Gudauri, which is not one of its optimalSnowWeeks/);
+  });
+
+  test('missing recommendedDates is retried', async () => {
+    const llm = scriptedLlm([{ selected_resort_id: 'gudauri' }, pick('gudauri')]);
+    const result = await runPipeline(baseRequest, { llm, retryDelayMs: 0 });
+
+    assert.equal(result.status, 'success');
+    assert.equal(result.agentRetries.length, 1);
+  });
+
+  test('a week in the wrong month is retried when the resort has good snow in the requested month', async () => {
+    // Gudauri has 'Early February' and 'Late February'; 'Mid January' ignores the user's February request.
+    const llm = scriptedLlm([pick('gudauri', 'Mid January'), pick('gudauri', 'Early February')]);
+    const result = await runPipeline({ ...baseRequest, preferredTimeframe: 'February' }, { llm, retryDelayMs: 0 });
+
+    assert.equal(result.recommendedDates, 'Early February');
+    assert.match(result.agentRetries[0].message, /user asked for "February"/);
+  });
+
+  test('any optimal week is accepted when the resort has none in the requested month', async () => {
+    // Gudauri has no March weeks, so the closest available week stands.
+    const llm = scriptedLlm([pick('gudauri', 'Late February')]);
+    const result = await runPipeline({ ...baseRequest, preferredTimeframe: 'early March' }, { llm });
+
+    assert.equal(result.recommendedDates, 'Late February');
+    assert.deepEqual(result.agentRetries, []);
   });
 
   test('does not send the budget to the Destination Agent', async () => {

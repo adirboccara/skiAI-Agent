@@ -11,17 +11,18 @@ A single LLM prompt fails at trip planning because it produces plausible-looking
 | Responsibility | Handled by | Why |
 |---|---|---|
 | Choosing a resort that fits the vibe, nightlife, crowd and terrain preferences | **LLM** (Destination Agent) | Qualitative judgment is what LLMs are good at |
+| Recommending the week to go | **LLM** picks, **code** verifies | The pick must be one of the resort's `optimalSnowWeeks` and, where possible, in the month the user asked for |
 | Prices, links and resort facts | **Tools** ([src/tools/mocks.js](src/tools/mocks.js)) | The Ground Truth source; every record carries `source: 'mock'` |
 | Hard constraints (ski-in/ski-out) | **Code** (`validateConstraints` in [src/finance.js](src/finance.js)) | Must be exact; missing data counts as a violation |
 | Budget arithmetic | **Code** (`calculateTotal` in [src/finance.js](src/finance.js)) | Computed in integer cents, so there are no floating-point errors |
 | Hotel choice within a resort | **Code** (closest to the requested level that fits the budget) | Depends on prices, so it must not be guessed |
 | The fallback message when nothing fits | **Code** | Names the real bottleneck; never a hallucinated package |
 
-The LLM never sees the budget or any price and never does arithmetic. It only picks a resort ID from the list it is offered, and an ID outside that list is rejected. Its free-text reasoning is returned as `destinationReasoning` for transparency but is never used as a fact.
+The LLM never sees the budget or any price and never does arithmetic. It only picks a resort ID from the list it is offered and one of that resort's snow weeks; any other ID or week is rejected and retried. Its free-text reasoning is returned as `destinationReasoning` for transparency but is never used as a fact.
 
 The Flight, Accommodation, Gear & Pass and Budget & Negotiation agents are deliberately **deterministic tool calls and code, not LLM prompts**, so that no financial value can be hallucinated.
 
-> **Note on data:** all prices, resort statistics and hotels are fixed, illustrative mock data, and all links point to `example.com`. They are not real offers.
+> **Note on data:** all prices, resort statistics, snow weeks and hotels are fixed, illustrative mock data for six resorts (La Molina, Gudauri, Val Thorens, Bansko, Mayrhofen, Ischgl). They are not real offers. The booking links are real vendor search pages for each resort (Google Flights, Booking.com, and Google searches for ski passes and gear rental). They open and work, but they show live prices, which will differ from the mock prices.
 
 ## The Dual-Loop Architecture
 
@@ -91,12 +92,13 @@ OPENROUTER_API_KEY=your_key_here
 npm test
 ```
 
-This runs the suite of **69 deterministic tests**. It needs no API key and no network access: the LLM and the network are replaced by scripted fakes. The suite covers:
+This runs the suite of **88 deterministic tests**. It needs no API key and no network access: the LLM and the network are replaced by scripted fakes. The suite covers:
 
 - **Budget integrity:** exact totals from unit prices × group size and room count, including cent-precision and floating-point cases.
 - **Input validation:** missing, negative, non-numeric and sub-cent prices, and invalid group or room counts, are rejected instead of guessed.
 - **Hard constraints:** ski-in/ski-out on both the resort and the hotel; missing data counts as a violation.
-- **Traceability:** every price and link in a proposal is checked to equal a Ground Truth tool result.
+- **Traceability:** every price and link in a proposal is checked to equal a Ground Truth tool result, and every resort in the mock data is checked for complete, well-formed records.
+- **Date recommendation:** weeks outside the resort's `optimalSnowWeeks`, missing weeks, and weeks in the wrong month are retried, never returned.
 - **Negotiation:** constraint and budget failures, feedback to the next round, and no re-offering of failed resorts.
 - **Fallback:** infeasible requests produce the deterministic fallback, never a package.
 - **Resilience:** retries within a round, fatal errors for persistent outages, and immediate failure on 401/404.
@@ -122,7 +124,7 @@ The server ([server.js](server.js)) exposes `POST /api/plan`. It validates the r
 node run.js
 ```
 
-This sends a fixed sample request (€2,200 budget, 2 people, 1 room, ski-in/ski-out required, young/party vibe) through the pipeline and prints the result as JSON. With the mock data, the expected outcome is **Gudauri at €1,770**: Val Thorens is blocked on budget and La Molina on ski-in/ski-out. The order in which the agent tries them can vary from run to run.
+This sends a fixed sample request (€2,200 budget, 2 people, 1 room, ski-in/ski-out required, young/party vibe, February) through the pipeline and prints the result as JSON. With the mock data, **Gudauri at €1,770** is the only package that fits: La Molina and Bansko fail ski-in/ski-out, and Val Thorens, Mayrhofen and Ischgl are over budget. The agent tries at most 3 resorts, so if it picks three failing ones first, you get the fallback instead.
 
 ## Project Structure
 
@@ -141,13 +143,15 @@ This sends a fixed sample request (€2,200 budget, 2 people, 1 room, ski-in/ski
 │   └── tools/mocks.js          Ground Truth mock tools: resorts, flights, hotels, passes, gear
 └── tests/
     ├── verification.test.js    Finance and constraint gates
-    ├── orchestrator.test.js    Pipeline, negotiation, fallback and resilience tests
+    ├── mocks.test.js           Ground Truth data completeness and link formats
+    ├── orchestrator.test.js    Pipeline, negotiation, dates, fallback and resilience tests
     └── server.test.js          Request validation and /api/plan endpoint tests
 ```
 
 ## Scope and Limitations
 
 - **Read-only:** the system proposes options with links but never books or pays for anything.
-- **Mock data only:** three resorts with fixed prices. Prices are valid only at query time; there is no live pricing.
+- **Mock data only:** six resorts with fixed prices. Prices are valid only at query time; there is no live pricing, and prices do not change with the chosen week.
 - **Not handled:** travel visas, medical insurance and extreme sports coverage.
-- **Preferences not yet used:** the user request currently supports budget, group size, rooms, ski-in/ski-out, accommodation level, vibe, nightlife, ski area size and crowd tolerance. Proximity to the town center and to the gondola, and travel dates, are not used yet, because the mock data has no values for them and the agents must not invent any.
+- **Dates are recommended at the level of a period** (e.g. "Early February"), not exact calendar dates.
+- **Preferences not yet used:** the user request currently supports budget, group size, rooms, ski-in/ski-out, accommodation level, vibe, nightlife, ski area size, crowd tolerance and preferred timeframe. Proximity to the town center and to the gondola are not used yet, because the mock data has no values for them and the agents must not invent any.

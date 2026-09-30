@@ -31,12 +31,12 @@ function el(tag, className, text) {
   return node;
 }
 
-// Only http(s) links from the tools are rendered as links.
+// Only https links from the tools are rendered as links.
 function safeLink(url, label) {
   try {
     const parsed = new URL(url);
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
-    const a = el('a', 'items__link', label);
+    if (parsed.protocol !== 'https:') return null;
+    const a = el('a', 'book', label);
     a.href = parsed.href;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
@@ -60,6 +60,7 @@ function readForm() {
     roomCount: Number(data.get('roomCount')),
     requiresSkiInOut: form.elements.requiresSkiInOut.checked,
     vibe: data.get('vibe'),
+    preferredTimeframe: data.get('preferredTimeframe').trim() || undefined,
     nightlifeImportance: Number(data.get('nightlifeImportance')),
     skiKmImportance: Number(data.get('skiKmImportance')),
     crowdTolerance: Number(data.get('crowdTolerance')),
@@ -104,16 +105,17 @@ function renderRun(result) {
   }
 }
 
-function itemRow(label, detail, unitPrice, quantity, unit, url) {
-  const row = el('tr');
-  const name = el('th');
-  name.scope = 'row';
-  name.append(el('span', 'items__name', label), el('span', 'items__detail', detail));
-  const price = el('td', 'items__price', `${euros.format(unitPrice)} × ${quantity} ${unit}`);
-  const link = el('td', 'items__action');
-  const a = safeLink(url, 'View');
-  if (a) link.append(a);
-  row.append(name, price, link);
+function itemRow(label, detail, unitPrice, quantity, unit, url, action) {
+  const row = el('li', 'item');
+  const name = el('div', 'item__text');
+  name.append(el('span', 'item__name', label), el('span', 'item__detail', detail));
+  const price = el('span', 'item__price', `${euros.format(unitPrice)} × ${quantity} ${unit}`);
+  row.append(name, price);
+  const button = safeLink(url, action);
+  if (button) {
+    button.setAttribute('aria-label', `${action} (opens in a new tab)`);
+    row.append(button);
+  }
   return row;
 }
 
@@ -131,11 +133,13 @@ function renderTicket(result) {
     ...(accommodation.hasSkiInOut ? [el('li', null, 'Ski-in/ski-out')] : []),
   );
 
+  document.getElementById('ticket-dates').textContent = result.recommendedDates;
+
   document.getElementById('ticket-items').replaceChildren(
-    itemRow('Flight', 'Return, per person', flight.pricePerPerson, flight.quantity, people(flight.quantity), flight.url),
-    itemRow('Hotel', `${accommodation.name} · level ${accommodation.level}/10`, accommodation.pricePerRoom, accommodation.quantity, accommodation.quantity === 1 ? 'room' : 'rooms', accommodation.url),
-    itemRow('Ski pass', 'Whole stay, per person', skiPass.pricePerPerson, skiPass.quantity, people(skiPass.quantity), skiPass.url),
-    itemRow('Gear rental', 'Whole stay, per person', gear.pricePerPerson, gear.quantity, people(gear.quantity), gear.url),
+    itemRow('Flight', `Return to ${flight.airport}, per person`, flight.pricePerPerson, flight.quantity, people(flight.quantity), flight.url, 'Book flight'),
+    itemRow('Hotel', `${accommodation.name} · level ${accommodation.level}/10`, accommodation.pricePerRoom, accommodation.quantity, accommodation.quantity === 1 ? 'room' : 'rooms', accommodation.url, 'Book hotel'),
+    itemRow('Ski pass', 'Whole stay, per person', skiPass.pricePerPerson, skiPass.quantity, people(skiPass.quantity), skiPass.url, 'Buy ski pass'),
+    itemRow('Gear rental', 'Whole stay, per person', gear.pricePerPerson, gear.quantity, people(gear.quantity), gear.url, 'Rent gear'),
   );
 
   const reasoning = document.getElementById('ticket-reasoning');
