@@ -11,7 +11,7 @@ A single LLM prompt fails at trip planning because it produces plausible-looking
 | Responsibility | Handled by | Why |
 |---|---|---|
 | Choosing a resort that fits the vibe, nightlife, crowd and terrain preferences | **LLM** (Destination Agent) | Qualitative judgment is what LLMs are good at |
-| Recommending the week to go | **LLM** picks, **code** verifies | The pick must be one of the resort's `optimalSnowWeeks` and, where possible, in the month the user asked for |
+| Recommending the week to go | **LLM** picks, **code** verifies | The pick must be one of the resort's `optimalSnowWeeks` and, where possible, in the month the user asked for; if it is not, the reasoning must say so |
 | Rejecting off-season timeframes (May to November, "summer", "autumn", "fall") | **Code**, before any LLM call | Our destinations only have snow from December to April; there is nothing for the LLM to decide |
 | Prices, links and resort facts | **Tools** ([src/tools/mocks.js](src/tools/mocks.js)) | The Ground Truth source; every record carries `source: 'mock'` |
 | Hard constraints (ski-in/ski-out) | **Code** (`validateConstraints` in [src/finance.js](src/finance.js)) | Must be exact; missing data counts as a violation |
@@ -93,13 +93,13 @@ OPENROUTER_API_KEY=your_key_here
 npm test
 ```
 
-This runs the suite of **119 deterministic tests**. It needs no API key and no network access: the LLM and the network are replaced by scripted fakes. The suite covers:
+This runs the suite of **124 deterministic tests**. It needs no API key and no network access: the LLM and the network are replaced by scripted fakes. The suite covers:
 
 - **Budget integrity:** exact totals from unit prices × group size and room count, including cent-precision and floating-point cases.
 - **Input validation:** missing, negative, non-numeric and sub-cent prices, and invalid group or room counts, are rejected instead of guessed.
 - **Hard constraints:** ski-in/ski-out on both the resort and the hotel; missing data counts as a violation.
 - **Traceability:** every price and link in a proposal is checked to equal a Ground Truth tool result, and every resort in the mock data is checked for complete, well-formed records.
-- **Date recommendation:** weeks outside the resort's `optimalSnowWeeks`, missing weeks, and weeks in the wrong month are retried, never returned.
+- **Date recommendation:** weeks outside the resort's `optimalSnowWeeks`, missing weeks, and weeks in the wrong month are retried, never returned. A move to a different month than requested is accepted only if `dateReasoning` names the requested month.
 - **Seasonal gate:** off-season timeframes are rejected before any LLM call, and in-season ones pass.
 - **Structured reasoning:** both reasoning fields are returned; missing, empty or price-mentioning reasoning is retried.
 - **Negotiation:** constraint and budget failures, feedback to the next round, and no re-offering of failed resorts.

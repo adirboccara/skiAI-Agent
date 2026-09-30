@@ -153,6 +153,8 @@ Use ONLY the data provided. Do not mention or estimate prices, and do not invent
 Explain your choice in two parts:
 - "resortReasoning": why this resort fits the user's vibe, nightlife and crowd preferences, citing the resort's data.
 - "dateReasoning": why this week was chosen, relative to "preferredTimeframe" and the resort's optimalSnowWeeks.
+  If the week is in a different month than the user's "preferredTimeframe", you MUST name the requested month and acknowledge the compromise,
+  e.g. "You requested April, but the best snow here ends earlier. The closest recommended time is Mid March."
 Respond with JSON only, in exactly this shape:
 {"selected_resort_id": "<one id from available_resorts>", "recommendedDates": "<one entry from that resort's optimalSnowWeeks>", "reasoning": {"resortReasoning": "<one or two sentences>", "dateReasoning": "<one sentence>"}}`;
 
@@ -233,6 +235,17 @@ export function checkRecommendedDates(recommendedDates, resort, preferredTimefra
   return null;
 }
 
+// When the recommended week is outside the months the user asked for, the
+// dateReasoning must name at least one requested month, so the shift is
+// acknowledged rather than silent. Returns an error message or null.
+export function checkDateShiftAcknowledged(dateReasoning, recommendedDates, preferredTimeframe) {
+  const wanted = monthsIn(preferredTimeframe ?? '');
+  if (wanted.length === 0) return null;
+  if (monthsIn(recommendedDates).some((month) => wanted.includes(month))) return null;
+  if (monthsIn(dateReasoning).some((month) => wanted.includes(month))) return null;
+  return `Destination Agent moved the trip from "${preferredTimeframe}" to "${recommendedDates}" without acknowledging the requested month in dateReasoning`;
+}
+
 // Asks the LLM to pick one resort and a week to go, with structured reasoning.
 // Throws LlmResponseError if the resort is not one of the offered ids, or the
 // dates or reasoning fail their checks.
@@ -267,6 +280,13 @@ export async function destinationAgent(preferences, resorts, previousFailures, {
 
   const reasoningProblem = checkReasoning(reply.reasoning);
   if (reasoningProblem) throw new LlmResponseError(reasoningProblem);
+
+  const shiftProblem = checkDateShiftAcknowledged(
+    reply.reasoning.dateReasoning,
+    reply.recommendedDates,
+    preferences.preferredTimeframe,
+  );
+  if (shiftProblem) throw new LlmResponseError(shiftProblem);
 
   return {
     selectedResortId,

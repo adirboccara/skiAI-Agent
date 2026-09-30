@@ -10,6 +10,7 @@ import {
   MAX_NEGOTIATION_ROUNDS,
   OffSeasonError,
   findOffSeasonWords,
+  checkDateShiftAcknowledged,
   OPENROUTER_URL,
 } from '../src/orchestrator.js';
 import { RESORTS, getResort, getFlight, getAccommodations, getSkiPass, getGearRental } from '../src/tools/mocks.js';
@@ -193,12 +194,51 @@ describe('runPipeline: negotiation loop', () => {
   });
 
   test('any optimal week is accepted when the resort has none in the requested month', async () => {
-    // Gudauri has no March weeks, so the closest available week stands.
-    const llm = scriptedLlm([pick('gudauri', 'Late February')]);
-    const result = await runPipeline({ ...baseRequest, preferredTimeframe: 'early March' }, { llm });
+    // Gudauri has no December weeks, so the closest available week stands (with the shift acknowledged).
+    const reply = pick('gudauri', 'Mid January');
+    reply.reasoning.dateReasoning = 'You requested December, but the best snow here starts later. The closest recommended time is Mid January.';
+    const result = await runPipeline({ ...baseRequest, preferredTimeframe: 'December' }, { llm: scriptedLlm([reply]) });
 
-    assert.equal(result.recommendedDates, 'Late February');
+    assert.equal(result.recommendedDates, 'Mid January');
     assert.deepEqual(result.agentRetries, []);
+  });
+
+  test('an April request gets an April week at a high-altitude resort, not a February one', async () => {
+    const llm = scriptedLlm([pick('gudauri', 'Late February'), pick('gudauri', 'Early April')]);
+    const result = await runPipeline({ ...baseRequest, preferredTimeframe: 'April' }, { llm, retryDelayMs: 0 });
+
+    assert.equal(result.recommendedDates, 'Early April');
+    assert.match(result.agentRetries[0].message, /user asked for "April"/);
+  });
+
+  test('a silent shift to another month is retried until the dateReasoning acknowledges it', async () => {
+    // Bansko has no April weeks; its closest is Early March.
+    const silent = pick('bansko', 'Early March');
+    silent.reasoning.dateReasoning = 'Early March has reliable snow and fewer crowds.';
+    const acknowledged = pick('bansko', 'Early March');
+    acknowledged.reasoning.dateReasoning = 'You requested April, but the best snow here ends earlier. The closest recommended time is Early March.';
+
+    const request = { ...baseRequest, requiresSkiInOut: false, preferredTimeframe: 'April' };
+    const result = await runPipeline(request, { llm: scriptedLlm([silent, acknowledged]), retryDelayMs: 0 });
+
+    assert.equal(result.status, 'success');
+    assert.equal(result.recommendedDates, 'Early March');
+    assert.match(result.destinationReasoning.dateReasoning, /You requested April/);
+    assert.equal(result.agentRetries.length, 1);
+    assert.match(result.agentRetries[0].message, /from "April" to "Early March" without acknowledging/);
+  });
+
+  test('no acknowledgement is needed when the week is in the requested month or no timeframe is given', () => {
+    assert.equal(checkDateShiftAcknowledged('Great snow.', 'Mid March', 'March'), null);
+    assert.equal(checkDateShiftAcknowledged('Great snow.', 'Mid March', undefined), null);
+    assert.equal(checkDateShiftAcknowledged('Great snow.', 'Mid March', 'Christmas week'), null);
+    assert.match(checkDateShiftAcknowledged('Great snow.', 'Mid March', 'April'), /without acknowledging/);
+  });
+
+  test('the prompt tells the agent to acknowledge a month shift', async () => {
+    const llm = scriptedLlm([pick('gudauri')]);
+    await runPipeline(baseRequest, { llm });
+    assert.match(llm.calls[0][0].content, /MUST name the requested month and acknowledge the compromise/);
   });
 
   test('returns the structured resort and date reasoning', async () => {

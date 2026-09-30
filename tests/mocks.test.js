@@ -31,6 +31,15 @@ for (const { id } of RESORTS) {
   });
 }
 
+test('snow weeks extend into late season: every resort has March, high-altitude resorts have April', () => {
+  for (const resort of RESORTS) {
+    assert.ok(resort.optimalSnowWeeks.some((w) => w.includes('March')), `${resort.id} has a March week`);
+  }
+  for (const id of ['gudauri', 'val-thorens']) {
+    assert.ok(getResort(id).optimalSnowWeeks.some((w) => w.includes('April')), `${id} has an April week`);
+  }
+});
+
 test('links follow the vendor search formats', () => {
   assert.match(getFlight('bansko').url, /^https:\/\/www\.google\.com\/travel\/flights\?q=Flights%20to%20SOF$/);
   assert.match(getAccommodations('val-thorens')[0].url, /^https:\/\/www\.booking\.com\/searchresults\.html\?ss=Val%20Thorens$/);

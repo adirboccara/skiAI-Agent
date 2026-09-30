@@ -21,7 +21,7 @@ export const RESORTS = Object.freeze([
     skiKm: 70,
     nightlifeScore: 3,
     crowdLevel: 6,
-    optimalSnowWeeks: Object.freeze(['Late January', 'Early February', 'Mid February']),
+    optimalSnowWeeks: Object.freeze(['Late January', 'Early February', 'Mid February', 'Early March']),
   }),
   Object.freeze({
     id: 'gudauri',
@@ -32,7 +32,7 @@ export const RESORTS = Object.freeze([
     skiKm: 75,
     nightlifeScore: 6,
     crowdLevel: 3,
-    optimalSnowWeeks: Object.freeze(['Mid January', 'Early February', 'Late February']),
+    optimalSnowWeeks: Object.freeze(['Mid January', 'Early February', 'Late February', 'Early March', 'Mid March', 'Late March', 'Early April']),
   }),
   Object.freeze({
     id: 'val-thorens',
@@ -43,7 +43,7 @@ export const RESORTS = Object.freeze([
     skiKm: 600,
     nightlifeScore: 9,
     crowdLevel: 8,
-    optimalSnowWeeks: Object.freeze(['Mid January', 'Late January', 'Mid February', 'Early March']),
+    optimalSnowWeeks: Object.freeze(['Mid January', 'Late January', 'Mid February', 'Early March', 'Mid March', 'Late March', 'Early April', 'Mid April']),
   }),
   Object.freeze({
     id: 'bansko',
@@ -54,7 +54,7 @@ export const RESORTS = Object.freeze([
     skiKm: 75,
     nightlifeScore: 7,
     crowdLevel: 7,
-    optimalSnowWeeks: Object.freeze(['Mid January', 'Late January', 'Early February']),
+    optimalSnowWeeks: Object.freeze(['Mid January', 'Late January', 'Early February', 'Early March']),
   }),
   Object.freeze({
     id: 'mayrhofen',
@@ -65,7 +65,7 @@ export const RESORTS = Object.freeze([
     skiKm: 136,
     nightlifeScore: 9,
     crowdLevel: 7,
-    optimalSnowWeeks: Object.freeze(['Late January', 'Early February', 'Mid March']),
+    optimalSnowWeeks: Object.freeze(['Late January', 'Early February', 'Mid March', 'Late March']),
   }),
   Object.freeze({
     id: 'ischgl',
@@ -76,7 +76,7 @@ export const RESORTS = Object.freeze([
     skiKm: 239,
     nightlifeScore: 10,
     crowdLevel: 9,
-    optimalSnowWeeks: Object.freeze(['Late January', 'Early February', 'Late February']),
+    optimalSnowWeeks: Object.freeze(['Late January', 'Early February', 'Late February', 'Early March', 'Mid March', 'Early April']),
   }),
 ]);
 
