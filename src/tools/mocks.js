@@ -7,6 +7,7 @@
 //
 // Prices are in EUR. Flight and ski pass prices are per person; accommodation
 // is per room for the whole stay; gear is per person for the whole stay.
+// nightlifeScore and crowdLevel are on a 1-10 scale (10 = liveliest / most crowded).
 
 export const RESORTS = Object.freeze([
   Object.freeze({
@@ -16,6 +17,8 @@ export const RESORTS = Object.freeze([
     vibe: 'family',
     skiInSkiOutAvailable: false,
     skiKm: 70,
+    nightlifeScore: 3,
+    crowdLevel: 6,
   }),
   Object.freeze({
     id: 'gudauri',
@@ -24,6 +27,8 @@ export const RESORTS = Object.freeze([
     vibe: 'young',
     skiInSkiOutAvailable: true,
     skiKm: 75,
+    nightlifeScore: 6,
+    crowdLevel: 3,
   }),
   Object.freeze({
     id: 'val-thorens',
@@ -32,6 +37,8 @@ export const RESORTS = Object.freeze([
     vibe: 'young',
     skiInSkiOutAvailable: true,
     skiKm: 600,
+    nightlifeScore: 9,
+    crowdLevel: 8,
   }),
 ]);
 

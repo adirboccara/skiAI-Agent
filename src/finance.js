@@ -31,7 +31,7 @@ export function fromCents(cents) {
   return cents / 100;
 }
 
-function assertPositiveInteger(name, value) {
+export function assertPositiveInteger(name, value) {
   if (!Number.isInteger(value) || value < 1) {
     throw new TypeError(`${name} must be a positive integer (got ${value})`);
   }
