@@ -122,6 +122,8 @@ Then open **http://localhost:3000** (set `PORT` in `.env` to use another port). 
 
 The server ([server.js](server.js)) exposes `POST /api/plan`. It validates the request, passes it to `runPipeline`, and returns the result as JSON. Invalid input gets a 400 response with a `code` (`off_season` or `invalid_request`) and never reaches the LLM.
 
+To deploy it publicly, see [docs/deployment.md](docs/deployment.md).
+
 ### 5. Run the CLI (optional)
 
 ```bash
@@ -138,6 +140,7 @@ This sends a fixed sample request (€2,200 budget, 2 people, 1 room, ski-in/ski
 ├── lessons-learned.md          Architectural decisions, what triggered them, and process lessons
 ├── docs/prompt-log.md          Instructions given to the coding agent, step by step, with pushbacks
 ├── docs/live-run-evidence.md   A verified live run: three budget rejections, then Gudauri in round 4
+├── docs/deployment.md          Deploying the web app to Render (free tier)
 ├── .github/workflows/test.yml  CI: runs the gates on every push and stores a JUnit report
 ├── server.js                   Express server: web UI + POST /api/plan (npm start)
 ├── run.js                      CLI entry point (node run.js)

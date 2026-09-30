@@ -14,5 +14,8 @@
   "type": "module",
   "dependencies": {
     "express": "^5.2.1"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }
