@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ski Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="masthead">
+    <p class="masthead__eyebrow">Multi-agent ski planner</p>
+    <h1 class="masthead__title">Find a ski trip that fits your budget</h1>
+    <p class="masthead__lede">
+      An AI agent picks the resort. Prices come only from the booking tools, and code checks every
+      package against your budget and must-haves before you see it.
+    </p>
+  </header>
+
+  <main class="layout">
+    <form id="plan-form" class="trip" novalidate>
+      <h2 class="section-title">Your trip</h2>
+
+      <fieldset class="trip__group">
+        <legend class="trip__legend">Must-haves</legend>
+
+        <label class="field">
+          <span class="field__label">Total budget</span>
+          <span class="field__money">
+            <span aria-hidden="true">€</span>
+            <input name="maxBudget" type="number" inputmode="decimal" min="1" step="0.01" value="2200" required>
+          </span>
+          <span class="field__hint">Flights, hotel, ski pass and gear. Excludes spending money.</span>
+        </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span class="field__label">People</span>
+            <input name="groupSize" type="number" inputmode="numeric" min="1" step="1" value="2" required>
+          </label>
+          <label class="field">
+            <span class="field__label">Rooms</span>
+            <input name="roomCount" type="number" inputmode="numeric" min="1" step="1" value="1" required>
+          </label>
+        </div>
+
+        <label class="toggle">
+          <input name="requiresSkiInOut" type="checkbox" checked>
+          <span class="toggle__text">
+            <span class="field__label">Ski-in/ski-out only</span>
+            <span class="field__hint">Only hotels you can ski to and from.</span>
+          </span>
+        </label>
+      </fieldset>
+
+      <fieldset class="trip__group">
+        <legend class="trip__legend">Preferences</legend>
+
+        <div class="field">
+          <span class="field__label" id="vibe-label">Vibe</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="vibe-label">
+            <label><input type="radio" name="vibe" value="young" checked><span>Young &amp; lively</span></label>
+            <label><input type="radio" name="vibe" value="family"><span>Family</span></label>
+          </div>
+        </div>
+
+        <label class="field slider">
+          <span class="slider__head"><span class="field__label">Nightlife</span><output data-for="nightlifeImportance">8</output></span>
+          <input name="nightlifeImportance" type="range" min="1" max="10" value="8">
+        </label>
+        <label class="field slider">
+          <span class="slider__head"><span class="field__label">Size of ski area</span><output data-for="skiKmImportance">8</output></span>
+          <input name="skiKmImportance" type="range" min="1" max="10" value="8">
+        </label>
+        <label class="field slider">
+          <span class="slider__head"><span class="field__label">Tolerance for crowds</span><output data-for="crowdTolerance">5</output></span>
+          <input name="crowdTolerance" type="range" min="1" max="10" value="5">
+        </label>
+        <label class="field slider">
+          <span class="slider__head"><span class="field__label">Hotel level</span><output data-for="accommodationLevel">7</output></span>
+          <input name="accommodationLevel" type="range" min="1" max="10" value="7">
+        </label>
+      </fieldset>
+
+      <p id="form-error" class="form-error" role="alert" hidden></p>
+      <button id="submit" class="button" type="submit">Plan my trip</button>
+    </form>
+
+    <section class="results" aria-labelledby="results-title" aria-live="polite">
+      <h2 id="results-title" class="section-title">Result</h2>
+
+      <div id="state-empty" class="empty">
+        <p>Set your budget and must-haves, then plan your trip. You'll see each resort the agents tried and why it was accepted or rejected.</p>
+      </div>
+
+      <div id="state-loading" class="loading" hidden>
+        <div class="loading__run" aria-hidden="true"><span class="loading__skier"></span></div>
+        <p class="loading__text">Agents are negotiating: choosing a resort, fetching prices and checking your budget.</p>
+        <p class="field__hint">Free AI models can take up to a minute.</p>
+      </div>
+
+      <div id="state-error" class="alert" role="alert" hidden>
+        <p class="alert__title">The planner couldn't finish</p>
+        <p id="error-message"></p>
+        <p class="field__hint">Check your API key and model in .env, then plan again.</p>
+      </div>
+
+      <div id="state-result" hidden>
+        <h3 class="subhead">How the agents got here</h3>
+        <ol id="run" class="run"></ol>
+
+        <div id="fallback" class="fallback" hidden>
+          <p class="fallback__title">No package fits</p>
+          <p id="fallback-message"></p>
+          <p class="field__hint">To get a package, change one of these and plan again:</p>
+          <ul id="fallback-compromises" class="chips"></ul>
+        </div>
+
+        <article id="ticket" class="ticket" hidden>
+          <div class="ticket__main">
+            <header class="ticket__head">
+              <p class="ticket__eyebrow" id="ticket-country"></p>
+              <h3 class="ticket__resort" id="ticket-resort"></h3>
+              <ul class="ticket__tags" id="ticket-tags"></ul>
+            </header>
+            <table class="items">
+              <caption class="visually-hidden">Package items</caption>
+              <thead>
+                <tr><th scope="col">Item</th><th scope="col">Price</th><th scope="col"><span class="visually-hidden">Link</span></th></tr>
+              </thead>
+              <tbody id="ticket-items"></tbody>
+            </table>
+            <figure class="reasoning">
+              <blockquote id="ticket-reasoning"></blockquote>
+              <figcaption>Why the Destination Agent chose this resort. Its words are not used for any price.</figcaption>
+            </figure>
+          </div>
+          <aside class="ticket__stub">
+            <p class="stub__label">Total</p>
+            <p class="stub__total" id="ticket-total"></p>
+            <dl class="stub__facts">
+              <div><dt>Budget</dt><dd id="ticket-budget"></dd></div>
+              <div><dt>Left over</dt><dd id="ticket-left"></dd></div>
+            </dl>
+            <p class="stub__check">Total checked against your budget by code, not by the AI.</p>
+          </aside>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>

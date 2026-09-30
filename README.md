@@ -62,7 +62,11 @@ Every retry is logged in the result's `agentRetries` field, separately from the 
 
 ### 1. Install
 
-The project has **zero runtime or development dependencies**, so there is nothing to install. Running `npm install` is harmless if your workflow expects it.
+```bash
+npm install
+```
+
+The only dependency is [Express](https://expressjs.com), which serves the web UI. The core pipeline, the CLI and the test suite use only Node built-ins.
 
 ### 2. Configure
 
@@ -87,7 +91,7 @@ OPENROUTER_API_KEY=your_key_here
 npm test
 ```
 
-This runs the suite of **49 deterministic tests**. It needs no API key and no network access: the LLM and the network are replaced by scripted fakes. The suite covers:
+This runs the suite of **69 deterministic tests**. It needs no API key and no network access: the LLM and the network are replaced by scripted fakes. The suite covers:
 
 - **Budget integrity:** exact totals from unit prices × group size and room count, including cent-precision and floating-point cases.
 - **Input validation:** missing, negative, non-numeric and sub-cent prices, and invalid group or room counts, are rejected instead of guessed.
@@ -96,28 +100,49 @@ This runs the suite of **49 deterministic tests**. It needs no API key and no ne
 - **Negotiation:** constraint and budget failures, feedback to the next round, and no re-offering of failed resorts.
 - **Fallback:** infeasible requests produce the deterministic fallback, never a package.
 - **Resilience:** retries within a round, fatal errors for persistent outages, and immediate failure on 401/404.
+- **Web API:** request validation (400 before any LLM call), proposal and fallback responses, JSON errors for malformed bodies, and 502 for pipeline failures.
 
-### 4. Run the Live Pipeline
+### 4. Run the Web UI
 
 ```bash
 npm start
 ```
 
-This runs [run.js](run.js), which sends a sample request (€2,200 budget, 2 people, 1 room, ski-in/ski-out required, young/party vibe) through the pipeline and prints the result as JSON: either a `"status": "success"` proposal or a `"status": "fallback"` explanation. With the mock data, the expected outcome is **Gudauri at €1,770**: Val Thorens is blocked on budget and La Molina on ski-in/ski-out. The order in which the agent tries them can vary from run to run.
+Then open **http://localhost:3000** (set `PORT` in `.env` to use another port). Enter a budget, the group size and rooms, the must-haves and preferences, and select **Plan my trip**. The page shows:
+
+- **How the agents got here:** each negotiation round, with rejected resorts and the exact reason computed by code.
+- **The package**, when one fits: resort, flight, hotel, ski pass and gear with unit prices, quantities and links, and the total, budget and amount left over. All of these values come from the server; the browser computes no prices.
+- **The fallback**, when nothing fits: the bottleneck and what to compromise on.
+
+The server ([server.js](server.js)) exposes `POST /api/plan`. It validates the request, passes it to `runPipeline`, and returns the result as JSON. Invalid input gets a 400 response and never reaches the LLM.
+
+### 5. Run the CLI (optional)
+
+```bash
+node run.js
+```
+
+This sends a fixed sample request (€2,200 budget, 2 people, 1 room, ski-in/ski-out required, young/party vibe) through the pipeline and prints the result as JSON. With the mock data, the expected outcome is **Gudauri at €1,770**: Val Thorens is blocked on budget and La Molina on ski-in/ski-out. The order in which the agent tries them can vary from run to run.
 
 ## Project Structure
 
 ```
 ├── framing.md                  Problem statement, Definition of Done, out of scope
 ├── CLAUDE.md                   Engineering rules for the agentic workflow
-├── run.js                      CLI entry point (npm start)
+├── server.js                   Express server: web UI + POST /api/plan (npm start)
+├── run.js                      CLI entry point (node run.js)
+├── public/
+│   ├── index.html              Trip form and result views
+│   ├── app.js                  Form handling and rendering (no price arithmetic)
+│   └── style.css               Styles, light and dark
 ├── src/
 │   ├── orchestrator.js         OpenRouter client, Destination Agent, dual-loop pipeline, fallback
 │   ├── finance.js              calculateTotal, validateConstraints, cents handling
 │   └── tools/mocks.js          Ground Truth mock tools: resorts, flights, hotels, passes, gear
 └── tests/
     ├── verification.test.js    Finance and constraint gates
-    └── orchestrator.test.js    Pipeline, negotiation, fallback and resilience tests
+    ├── orchestrator.test.js    Pipeline, negotiation, fallback and resilience tests
+    └── server.test.js          Request validation and /api/plan endpoint tests
 ```
 
 ## Scope and Limitations
