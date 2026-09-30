@@ -95,6 +95,9 @@ describe('POST /api/plan', () => {
       { selected_resort_id: 'la-molina', recommendedDates: 'Late January' },
       { selected_resort_id: 'gudauri', recommendedDates: 'Mid January' },
       { selected_resort_id: 'val-thorens', recommendedDates: 'Mid January' },
+      { selected_resort_id: 'bansko', recommendedDates: 'Mid January' },
+      { selected_resort_id: 'mayrhofen', recommendedDates: 'Late January' },
+      { selected_resort_id: 'ischgl', recommendedDates: 'Late January' },
     ];
     const { status, body } = await post({ ...validBody, maxBudget: 500 });
 

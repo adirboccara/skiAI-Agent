@@ -7,6 +7,7 @@ import {
   LlmResponseError,
   OpenRouterHttpError,
   DEFAULT_MODEL,
+  MAX_NEGOTIATION_ROUNDS,
   OPENROUTER_URL,
 } from '../src/orchestrator.js';
 import { RESORTS, getResort, getFlight, getAccommodations, getSkiPass, getGearRental } from '../src/tools/mocks.js';
@@ -206,27 +207,49 @@ describe('runPipeline: negotiation loop', () => {
 });
 
 describe('runPipeline: deterministic fallback', () => {
-  test('after 3 failed rounds, returns a fallback naming the budget and every bottleneck', async () => {
+  test('allows one negotiation round per resort', () => {
+    assert.equal(MAX_NEGOTIATION_ROUNDS, RESORTS.length);
+    assert.equal(MAX_NEGOTIATION_ROUNDS, 6);
+  });
+
+  test('pivots to the only affordable resort after three expensive rejections', async () => {
+    // The demo scenario: the agent chases nightlife first. Under a 3-round limit this ended in the fallback.
+    const request = { ...baseRequest, maxBudget: 2200 };
+    const llm = scriptedLlm([pick('ischgl'), pick('val-thorens'), pick('mayrhofen'), pick('gudauri')]);
+    const result = await runPipeline(request, { llm });
+
+    assert.equal(result.status, 'success');
+    assert.equal(result.resort.id, 'gudauri');
+    assert.equal(result.negotiationRounds, 4);
+    assert.deepEqual(result.previousFailures.map((f) => [f.resortId, f.type]), [
+      ['ischgl', 'budget'],
+      ['val-thorens', 'budget'],
+      ['mayrhofen', 'budget'],
+    ]);
+  });
+
+  test('after every resort fails, returns a fallback naming the budget and every bottleneck', async () => {
     const request = { ...baseRequest, maxBudget: 1000 };
-    const llm = scriptedLlm([pick('la-molina'), pick('gudauri'), pick('val-thorens')]);
+    const order = ['la-molina', 'gudauri', 'val-thorens', 'bansko', 'mayrhofen', 'ischgl'];
+    const llm = scriptedLlm(order.map((id) => pick(id)));
     const result = await runPipeline(request, { llm });
 
     assert.equal(result.status, 'fallback');
-    assert.equal(llm.calls.length, 3);
+    assert.equal(llm.calls.length, 6);
     assert.match(result.message, /^Cannot find a package matching your budget of €1000 and hard constraints\. Please compromise on: /);
     assert.deepEqual(result.compromises, ['increasing your maximum budget', 'dropping the ski-in/ski-out requirement']);
-    assert.deepEqual(result.bottlenecks.map((b) => b.resortId), ['la-molina', 'gudauri', 'val-thorens']);
+    assert.deepEqual(result.bottlenecks.map((b) => b.resortId), order);
     assert.equal(result.total, undefined, 'a fallback must not contain a package total');
   });
 
   test('when the LLM never returns a usable choice, exhausts retries per round and falls back', async () => {
-    // 3 rounds x (1 attempt + 2 retries) = 9 unusable replies.
-    const llm = scriptedLlm(Array.from({ length: 9 }, (_, i) => [{}, { selected_resort_id: 'nowhere' }, pick('')][i % 3]));
+    // 6 rounds x (1 attempt + 2 retries) = 18 unusable replies.
+    const llm = scriptedLlm(Array.from({ length: 18 }, (_, i) => [{}, { selected_resort_id: 'nowhere' }, pick('')][i % 3]));
     const result = await runPipeline(baseRequest, { llm, retryDelayMs: 0 });
 
     assert.equal(result.status, 'fallback');
-    assert.equal(llm.calls.length, 9);
-    assert.equal(result.bottlenecks.length, 3);
+    assert.equal(llm.calls.length, 18);
+    assert.equal(result.bottlenecks.length, 6);
     assert.ok(result.bottlenecks.every((b) => b.type === 'invalid_agent_output'));
     assert.ok(result.bottlenecks.every((b) => /after 3 attempts/.test(b.message)));
   });

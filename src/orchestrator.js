@@ -26,7 +26,9 @@ export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 // OpenRouter retires free models regularly; override with OPENROUTER_MODEL
 // (in .env) without a code change. The default must support response_format.
 export const DEFAULT_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
-export const MAX_NEGOTIATION_ROUNDS = 3;
+// One round per resort (6 today), so the agent can work through every
+// over-budget or constraint-failing option before the fallback triggers.
+export const MAX_NEGOTIATION_ROUNDS = RESORTS.length;
 // Extra Destination Agent attempts within one round. API/format flakiness is
 // retried here so it does not consume a negotiation round.
 export const MAX_AGENT_RETRIES = 2;

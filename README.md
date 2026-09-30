@@ -29,7 +29,7 @@ The Flight, Accommodation, Gear & Pass and Budget & Negotiation agents are delib
 ```
 runPipeline(userRequest)
 │
-├── Outer loop: Business Negotiation (up to 3 rounds)
+├── Outer loop: Business Negotiation (up to 6 rounds, one per resort)
 │   │
 │   ├── 1. Destination Agent (LLM) picks a resort
 │   │      └── Inner loop: API Resilience (1 attempt + up to 2 retries, same round)
@@ -92,7 +92,7 @@ OPENROUTER_API_KEY=your_key_here
 npm test
 ```
 
-This runs the suite of **88 deterministic tests**. It needs no API key and no network access: the LLM and the network are replaced by scripted fakes. The suite covers:
+This runs the suite of **90 deterministic tests**. It needs no API key and no network access: the LLM and the network are replaced by scripted fakes. The suite covers:
 
 - **Budget integrity:** exact totals from unit prices × group size and room count, including cent-precision and floating-point cases.
 - **Input validation:** missing, negative, non-numeric and sub-cent prices, and invalid group or room counts, are rejected instead of guessed.
@@ -124,7 +124,7 @@ The server ([server.js](server.js)) exposes `POST /api/plan`. It validates the r
 node run.js
 ```
 
-This sends a fixed sample request (€2,200 budget, 2 people, 1 room, ski-in/ski-out required, young/party vibe, February) through the pipeline and prints the result as JSON. With the mock data, **Gudauri at €1,770** is the only package that fits: La Molina and Bansko fail ski-in/ski-out, and Val Thorens, Mayrhofen and Ischgl are over budget. The agent tries at most 3 resorts, so if it picks three failing ones first, you get the fallback instead.
+This sends a fixed sample request (€2,200 budget, 2 people, 1 room, ski-in/ski-out required, young/party vibe, February) through the pipeline and prints the result as JSON. With the mock data, **Gudauri at €1,770** is the only package that fits: La Molina and Bansko fail ski-in/ski-out, and Val Thorens, Mayrhofen and Ischgl are over budget. The loop allows one round per resort, so the agent can work through every rejected option; if it first chases the nightlife resorts, it gets blocked on budget and can still pivot to Gudauri.
 
 ## Project Structure
 
