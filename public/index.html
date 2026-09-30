@@ -23,6 +23,11 @@
     <form id="plan-form" class="trip" novalidate>
       <h2 class="section-title">Your trip</h2>
 
+      <div id="request-warning" class="warning" role="alert" hidden>
+        <p class="warning__title" id="request-warning-title"></p>
+        <p id="request-warning-message"></p>
+      </div>
+
       <fieldset class="trip__group">
         <legend class="trip__legend">Must-haves</legend>
 
@@ -90,7 +95,6 @@
         </label>
       </fieldset>
 
-      <p id="form-error" class="form-error" role="alert" hidden></p>
       <button id="submit" class="button" type="submit">Plan my trip</button>
     </form>
 
@@ -136,12 +140,22 @@
               <p class="dates__value" id="ticket-dates"></p>
               <p class="field__hint">Picked from this resort's best snow weeks.</p>
             </div>
+            <section class="why" aria-labelledby="why-title">
+              <h4 class="why__title" id="why-title">Why this trip</h4>
+              <div class="why__grid">
+                <div class="why__item">
+                  <p class="why__label" id="why-resort-label"></p>
+                  <p class="why__text" id="why-resort"></p>
+                </div>
+                <div class="why__item">
+                  <p class="why__label" id="why-dates-label"></p>
+                  <p class="why__text" id="why-dates"></p>
+                </div>
+              </div>
+              <p class="why__note">Written by the Destination Agent. Never used for any price or check.</p>
+            </section>
             <ul class="items" id="ticket-items" aria-label="Package items"></ul>
             <p class="items__note">Booking links open live searches on each site. Prices there may differ from the mock prices shown here.</p>
-            <figure class="reasoning">
-              <blockquote id="ticket-reasoning"></blockquote>
-              <figcaption>Why the Destination Agent chose this resort. Its words are not used for any price.</figcaption>
-            </figure>
           </div>
           <aside class="ticket__stub">
             <p class="stub__label">Total</p>

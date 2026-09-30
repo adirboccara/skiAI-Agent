@@ -78,26 +78,36 @@ describe('POST /api/plan', () => {
     return { status: response.status, body: await response.json() };
   }
 
+  const reply = (id, recommendedDates) => ({
+    selected_resort_id: id,
+    recommendedDates,
+    reasoning: { resortReasoning: `${id} fits`, dateReasoning: `${recommendedDates} has good snow` },
+  });
+
   test('returns the pipeline proposal for a valid request', async () => {
-    nextReplies = [{ selected_resort_id: 'gudauri', recommendedDates: 'Early February', reasoning: 'fits' }];
+    nextReplies = [reply('gudauri', 'Early February')];
     const { status, body } = await post({ ...validBody, preferredTimeframe: 'February' });
 
     assert.equal(status, 200);
     assert.equal(body.status, 'success');
     assert.equal(body.resort.id, 'gudauri');
     assert.equal(body.recommendedDates, 'Early February');
+    assert.deepEqual(body.destinationReasoning, {
+      resortReasoning: 'gudauri fits',
+      dateReasoning: 'Early February has good snow',
+    });
     assert.equal(body.total, 1770);
     assert.equal(body.maxBudget, 2200);
   });
 
   test('returns the deterministic fallback when nothing fits', async () => {
     nextReplies = [
-      { selected_resort_id: 'la-molina', recommendedDates: 'Late January' },
-      { selected_resort_id: 'gudauri', recommendedDates: 'Mid January' },
-      { selected_resort_id: 'val-thorens', recommendedDates: 'Mid January' },
-      { selected_resort_id: 'bansko', recommendedDates: 'Mid January' },
-      { selected_resort_id: 'mayrhofen', recommendedDates: 'Late January' },
-      { selected_resort_id: 'ischgl', recommendedDates: 'Late January' },
+      reply('la-molina', 'Late January'),
+      reply('gudauri', 'Mid January'),
+      reply('val-thorens', 'Mid January'),
+      reply('bansko', 'Mid January'),
+      reply('mayrhofen', 'Late January'),
+      reply('ischgl', 'Late January'),
     ];
     const { status, body } = await post({ ...validBody, maxBudget: 500 });
 
@@ -113,6 +123,21 @@ describe('POST /api/plan', () => {
     assert.equal(status, 400);
     assert.match(body.error, /roomCount/);
     assert.equal(llmCalls, 0);
+  });
+
+  test('rejects an off-season timeframe with a 400 off_season error before calling the LLM', async () => {
+    nextReplies = [];
+    const { status, body } = await post({ ...validBody, preferredTimeframe: 'late July' });
+
+    assert.equal(status, 400);
+    assert.equal(body.code, 'off_season');
+    assert.equal(body.error, 'These months are outside the ski season for our destinations. Please select a timeframe between December and April.');
+    assert.equal(llmCalls, 0);
+  });
+
+  test('other invalid input is reported with the invalid_request code', async () => {
+    const { body } = await post({ ...validBody, vibe: 'party' });
+    assert.equal(body.code, 'invalid_request');
   });
 
   test('rejects malformed JSON with a JSON 400', async () => {

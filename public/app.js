@@ -3,7 +3,7 @@
 
 const form = document.getElementById('plan-form');
 const submitButton = document.getElementById('submit');
-const formError = document.getElementById('form-error');
+const warning = document.getElementById('request-warning');
 
 const states = {
   empty: document.getElementById('state-empty'),
@@ -142,8 +142,11 @@ function renderTicket(result) {
     itemRow('Gear rental', 'Whole stay, per person', gear.pricePerPerson, gear.quantity, people(gear.quantity), gear.url, 'Rent gear'),
   );
 
-  const reasoning = document.getElementById('ticket-reasoning');
-  reasoning.textContent = result.destinationReasoning || 'The agent gave no reason.';
+  const { resortReasoning, dateReasoning } = result.destinationReasoning;
+  document.getElementById('why-resort-label').textContent = `Why ${resort.name}`;
+  document.getElementById('why-resort').textContent = resortReasoning;
+  document.getElementById('why-dates-label').textContent = `Why ${result.recommendedDates}`;
+  document.getElementById('why-dates').textContent = dateReasoning;
 
   document.getElementById('ticket-total').textContent = euros.format(result.total);
   document.getElementById('ticket-budget').textContent = euros.format(result.maxBudget);
@@ -167,13 +170,23 @@ function renderResult(result) {
   show('result');
 }
 
+// Problems with the user's input are shown above the form, not in the results.
+function showWarning(title, message) {
+  document.getElementById('request-warning-title').textContent = title;
+  document.getElementById('request-warning-message').textContent = message;
+  warning.hidden = false;
+  warning.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
+  warning.hidden = true;
   const request = readForm();
   const problem = checkForm(request);
-  formError.hidden = !problem;
-  formError.textContent = problem ?? '';
-  if (problem) return;
+  if (problem) {
+    showWarning('Check your trip details', problem);
+    return;
+  }
 
   submitButton.disabled = true;
   submitButton.textContent = 'Planning…';
@@ -186,6 +199,16 @@ form.addEventListener('submit', async (event) => {
       body: JSON.stringify(request),
     });
     const body = await response.json().catch(() => ({}));
+    if (response.status === 400) {
+      show('empty');
+      if (body.code === 'off_season') {
+        showWarning('Outside the ski season', body.error);
+        form.elements.preferredTimeframe.focus();
+      } else {
+        showWarning('Check your trip details', body.error ?? 'The server rejected the request.');
+      }
+      return;
+    }
     if (!response.ok) throw new Error(body.error ?? `The server answered with status ${response.status}.`);
     renderResult(body);
   } catch (err) {

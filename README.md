@@ -12,13 +12,14 @@ A single LLM prompt fails at trip planning because it produces plausible-looking
 |---|---|---|
 | Choosing a resort that fits the vibe, nightlife, crowd and terrain preferences | **LLM** (Destination Agent) | Qualitative judgment is what LLMs are good at |
 | Recommending the week to go | **LLM** picks, **code** verifies | The pick must be one of the resort's `optimalSnowWeeks` and, where possible, in the month the user asked for |
+| Rejecting off-season timeframes (May to November, "summer", "autumn", "fall") | **Code**, before any LLM call | Our destinations only have snow from December to April; there is nothing for the LLM to decide |
 | Prices, links and resort facts | **Tools** ([src/tools/mocks.js](src/tools/mocks.js)) | The Ground Truth source; every record carries `source: 'mock'` |
 | Hard constraints (ski-in/ski-out) | **Code** (`validateConstraints` in [src/finance.js](src/finance.js)) | Must be exact; missing data counts as a violation |
 | Budget arithmetic | **Code** (`calculateTotal` in [src/finance.js](src/finance.js)) | Computed in integer cents, so there are no floating-point errors |
 | Hotel choice within a resort | **Code** (closest to the requested level that fits the budget) | Depends on prices, so it must not be guessed |
 | The fallback message when nothing fits | **Code** | Names the real bottleneck; never a hallucinated package |
 
-The LLM never sees the budget or any price and never does arithmetic. It only picks a resort ID from the list it is offered and one of that resort's snow weeks; any other ID or week is rejected and retried. Its free-text reasoning is returned as `destinationReasoning` for transparency but is never used as a fact.
+The LLM never sees the budget or any price and never does arithmetic. It only picks a resort ID from the list it is offered and one of that resort's snow weeks; any other ID or week is rejected and retried. It must also explain its choice as structured reasoning, `resortReasoning` (why this resort fits the vibe and crowd preferences) and `dateReasoning` (why this week), which is returned as `destinationReasoning` and shown in the UI under "Why this trip". Reasoning that is missing or mentions a price is rejected and retried. The text is shown for transparency but never used as a fact.
 
 The Flight, Accommodation, Gear & Pass and Budget & Negotiation agents are deliberately **deterministic tool calls and code, not LLM prompts**, so that no financial value can be hallucinated.
 
@@ -92,13 +93,15 @@ OPENROUTER_API_KEY=your_key_here
 npm test
 ```
 
-This runs the suite of **90 deterministic tests**. It needs no API key and no network access: the LLM and the network are replaced by scripted fakes. The suite covers:
+This runs the suite of **119 deterministic tests**. It needs no API key and no network access: the LLM and the network are replaced by scripted fakes. The suite covers:
 
 - **Budget integrity:** exact totals from unit prices × group size and room count, including cent-precision and floating-point cases.
 - **Input validation:** missing, negative, non-numeric and sub-cent prices, and invalid group or room counts, are rejected instead of guessed.
 - **Hard constraints:** ski-in/ski-out on both the resort and the hotel; missing data counts as a violation.
 - **Traceability:** every price and link in a proposal is checked to equal a Ground Truth tool result, and every resort in the mock data is checked for complete, well-formed records.
 - **Date recommendation:** weeks outside the resort's `optimalSnowWeeks`, missing weeks, and weeks in the wrong month are retried, never returned.
+- **Seasonal gate:** off-season timeframes are rejected before any LLM call, and in-season ones pass.
+- **Structured reasoning:** both reasoning fields are returned; missing, empty or price-mentioning reasoning is retried.
 - **Negotiation:** constraint and budget failures, feedback to the next round, and no re-offering of failed resorts.
 - **Fallback:** infeasible requests produce the deterministic fallback, never a package.
 - **Resilience:** retries within a round, fatal errors for persistent outages, and immediate failure on 401/404.
@@ -115,8 +118,9 @@ Then open **http://localhost:3000** (set `PORT` in `.env` to use another port). 
 - **How the agents got here:** each negotiation round, with rejected resorts and the exact reason computed by code.
 - **The package**, when one fits: resort, flight, hotel, ski pass and gear with unit prices, quantities and links, and the total, budget and amount left over. All of these values come from the server; the browser computes no prices.
 - **The fallback**, when nothing fits: the bottleneck and what to compromise on.
+- **A warning above the form** for invalid input, including an off-season timeframe such as "July".
 
-The server ([server.js](server.js)) exposes `POST /api/plan`. It validates the request, passes it to `runPipeline`, and returns the result as JSON. Invalid input gets a 400 response and never reaches the LLM.
+The server ([server.js](server.js)) exposes `POST /api/plan`. It validates the request, passes it to `runPipeline`, and returns the result as JSON. Invalid input gets a 400 response with a `code` (`off_season` or `invalid_request`) and never reaches the LLM.
 
 ### 5. Run the CLI (optional)
 

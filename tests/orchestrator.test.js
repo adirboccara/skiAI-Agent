@@ -8,6 +8,8 @@ import {
   OpenRouterHttpError,
   DEFAULT_MODEL,
   MAX_NEGOTIATION_ROUNDS,
+  OffSeasonError,
+  findOffSeasonWords,
   OPENROUTER_URL,
 } from '../src/orchestrator.js';
 import { RESORTS, getResort, getFlight, getAccommodations, getSkiPass, getGearRental } from '../src/tools/mocks.js';
@@ -31,7 +33,10 @@ const firstWeek = (id) => RESORTS.find((r) => r.id === id)?.optimalSnowWeeks[0] 
 const pick = (id, recommendedDates = firstWeek(id)) => ({
   selected_resort_id: id,
   recommendedDates,
-  reasoning: `mock reasoning for ${id}`,
+  reasoning: {
+    resortReasoning: `mock resort reasoning for ${id}`,
+    dateReasoning: `mock date reasoning for ${recommendedDates}`,
+  },
 });
 
 // The JSON payload sent to the Destination Agent on a given call.
@@ -196,6 +201,49 @@ describe('runPipeline: negotiation loop', () => {
     assert.deepEqual(result.agentRetries, []);
   });
 
+  test('returns the structured resort and date reasoning', async () => {
+    const reply = pick('gudauri', 'Early February');
+    reply.reasoning = {
+      resortReasoning: '  Gudauri fits a young crowd with low crowding (level 3).  ',
+      dateReasoning: 'Early February matches your February request.',
+    };
+    const result = await runPipeline({ ...baseRequest, preferredTimeframe: 'February' }, { llm: scriptedLlm([reply]) });
+
+    assert.deepEqual(result.destinationReasoning, {
+      resortReasoning: 'Gudauri fits a young crowd with low crowding (level 3).',
+      dateReasoning: 'Early February matches your February request.',
+    });
+  });
+
+  test('asks the Destination Agent for resortReasoning and dateReasoning', async () => {
+    const llm = scriptedLlm([pick('gudauri')]);
+    await runPipeline(baseRequest, { llm });
+
+    const systemPrompt = llm.calls[0][0].content;
+    assert.match(systemPrompt, /"resortReasoning"/);
+    assert.match(systemPrompt, /"dateReasoning"/);
+  });
+
+  const badReasoning = {
+    'a plain string instead of an object': 'Gudauri is great',
+    'no reasoning at all': undefined,
+    'a missing dateReasoning': { resortReasoning: 'Young crowd.' },
+    'an empty resortReasoning': { resortReasoning: '   ', dateReasoning: 'February.' },
+    'a price in resortReasoning': { resortReasoning: 'It is only €1770 in total.', dateReasoning: 'February.' },
+    'a price in dateReasoning': { resortReasoning: 'Young crowd.', dateReasoning: 'Flights are 300 euros cheaper then.' },
+  };
+  for (const [name, reasoning] of Object.entries(badReasoning)) {
+    test(`reasoning with ${name} is retried, never returned`, async () => {
+      const llm = scriptedLlm([{ ...pick('gudauri'), reasoning }, pick('gudauri')]);
+      const result = await runPipeline(baseRequest, { llm, retryDelayMs: 0 });
+
+      assert.equal(result.status, 'success');
+      assert.equal(result.agentRetries.length, 1);
+      assert.match(result.agentRetries[0].message, /reasoning/);
+      assert.equal(result.destinationReasoning.resortReasoning, 'mock resort reasoning for gudauri');
+    });
+  }
+
   test('does not send the budget to the Destination Agent', async () => {
     const llm = scriptedLlm([pick('gudauri')]);
     await runPipeline(baseRequest, { llm });
@@ -203,6 +251,32 @@ describe('runPipeline: negotiation loop', () => {
     const payload = payloadOf(llm.calls[0]);
     assert.equal(payload.user_preferences.maxBudget, undefined);
     assert.equal(payload.user_preferences.vibe, 'young');
+  });
+});
+
+describe('runPipeline: seasonal gate', () => {
+  const offSeason = ['June', 'july', 'Late AUGUST', 'mid September', 'May', 'October', 'November', 'summer', 'early autumn', 'late fall', 'April or May'];
+  for (const preferredTimeframe of offSeason) {
+    test(`"${preferredTimeframe}" is rejected before any LLM call`, async () => {
+      const llm = scriptedLlm([]);
+      await assert.rejects(runPipeline({ ...baseRequest, preferredTimeframe }, { llm }), (err) => {
+        assert.ok(err instanceof OffSeasonError);
+        assert.equal(err.message, 'These months are outside the ski season for our destinations. Please select a timeframe between December and April.');
+        return true;
+      });
+      assert.equal(llm.calls.length, 0);
+    });
+  }
+
+  const inSeason = ['December', 'late January', 'FEBRUARY', 'early March', 'April', 'Christmas week', 'snowfall season'];
+  for (const preferredTimeframe of inSeason) {
+    test(`"${preferredTimeframe}" passes the seasonal gate`, () => {
+      assert.deepEqual(findOffSeasonWords(preferredTimeframe), []);
+    });
+  }
+
+  test('reports which words were off-season', () => {
+    assert.deepEqual(findOffSeasonWords('July or August'), ['july', 'august']);
   });
 });
 

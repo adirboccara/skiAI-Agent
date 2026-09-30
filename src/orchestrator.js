@@ -150,19 +150,70 @@ If "preferredTimeframe" is given, prefer resorts whose optimalSnowWeeks match it
 Then recommend when to go: copy exactly ONE entry from the chosen resort's "optimalSnowWeeks", the one closest to "preferredTimeframe" (or the best one if no timeframe is given).
 "previous_failures" lists resorts already rejected by the budget and constraint checks and why; learn from them.
 Use ONLY the data provided. Do not mention or estimate prices, and do not invent facts about resorts or dates.
+Explain your choice in two parts:
+- "resortReasoning": why this resort fits the user's vibe, nightlife and crowd preferences, citing the resort's data.
+- "dateReasoning": why this week was chosen, relative to "preferredTimeframe" and the resort's optimalSnowWeeks.
 Respond with JSON only, in exactly this shape:
-{"selected_resort_id": "<one id from available_resorts>", "recommendedDates": "<one entry from that resort's optimalSnowWeeks>", "reasoning": "<one or two sentences>"}`;
+{"selected_resort_id": "<one id from available_resorts>", "recommendedDates": "<one entry from that resort's optimalSnowWeeks>", "reasoning": {"resortReasoning": "<one or two sentences>", "dateReasoning": "<one sentence>"}}`;
 
 const MONTHS = [
   'january', 'february', 'march', 'april', 'may', 'june',
   'july', 'august', 'september', 'october', 'november', 'december',
 ];
 
+// Our destinations' ski season runs December to April; any other month, or a
+// named off-season, is rejected before the LLM is called.
+const OFF_SEASON_WORDS = [
+  'may', 'june', 'july', 'august', 'september', 'october', 'november',
+  'summer', 'autumn', 'fall',
+];
+
+export const OFF_SEASON_MESSAGE =
+  'These months are outside the ski season for our destinations. Please select a timeframe between December and April.';
+
+// Thrown when the requested timeframe is outside the ski season.
+export class OffSeasonError extends Error {
+  constructor(offSeasonWords) {
+    super(OFF_SEASON_MESSAGE);
+    this.name = 'OffSeasonError';
+    this.offSeasonWords = offSeasonWords;
+  }
+}
+
+function wordsIn(text) {
+  return String(text).toLowerCase().match(/[a-z]+/g) ?? [];
+}
+
 // Month names mentioned in free text, e.g. "late Jan or February" -> ['february'].
 // Only full month names count, so the check never guesses at abbreviations.
 function monthsIn(text) {
-  const words = String(text).toLowerCase().match(/[a-z]+/g) ?? [];
+  const words = wordsIn(text);
   return MONTHS.filter((month) => words.includes(month));
+}
+
+// Deterministic seasonal gate. Returns the off-season words found in the
+// timeframe (e.g. ['july']); an empty array means the timeframe is in season.
+export function findOffSeasonWords(preferredTimeframe) {
+  if (!preferredTimeframe) return [];
+  const words = wordsIn(preferredTimeframe);
+  return OFF_SEASON_WORDS.filter((word) => words.includes(word));
+}
+
+// Reasoning is shown to users, so it may not state prices: those come only from tools.
+const PRICE_MENTION = /[€$£]|\b(eur|euros?|usd|dollars?|gbp|pounds?)\b/i;
+
+// Validates the agent's structured reasoning. Returns an error message or null.
+export function checkReasoning(reasoning) {
+  for (const field of ['resortReasoning', 'dateReasoning']) {
+    const text = reasoning?.[field];
+    if (typeof text !== 'string' || text.trim() === '') {
+      return `Destination Agent reply is missing reasoning.${field}`;
+    }
+    if (PRICE_MENTION.test(text)) {
+      return `Destination Agent reasoning.${field} mentions a price, which only the tools may provide`;
+    }
+  }
+  return null;
 }
 
 // Deterministic gate on the agent's date pick: it must be one of the resort's
@@ -182,8 +233,9 @@ export function checkRecommendedDates(recommendedDates, resort, preferredTimefra
   return null;
 }
 
-// Asks the LLM to pick one resort and a week to go. Throws LlmResponseError if
-// the resort is not one of the offered ids or the dates fail checkRecommendedDates.
+// Asks the LLM to pick one resort and a week to go, with structured reasoning.
+// Throws LlmResponseError if the resort is not one of the offered ids, or the
+// dates or reasoning fail their checks.
 export async function destinationAgent(preferences, resorts, previousFailures, { llm = callOpenRouter } = {}) {
   const userPreferences = Object.fromEntries(
     PREFERENCE_KEYS.filter((key) => preferences[key] !== undefined).map((key) => [key, preferences[key]]),
@@ -213,10 +265,16 @@ export async function destinationAgent(preferences, resorts, previousFailures, {
   const datesProblem = checkRecommendedDates(reply.recommendedDates, resort, preferences.preferredTimeframe);
   if (datesProblem) throw new LlmResponseError(datesProblem);
 
+  const reasoningProblem = checkReasoning(reply.reasoning);
+  if (reasoningProblem) throw new LlmResponseError(reasoningProblem);
+
   return {
     selectedResortId,
     recommendedDates: reply.recommendedDates,
-    reasoning: typeof reply.reasoning === 'string' ? reply.reasoning : '',
+    reasoning: {
+      resortReasoning: reply.reasoning.resortReasoning.trim(),
+      dateReasoning: reply.reasoning.dateReasoning.trim(),
+    },
   };
 }
 
@@ -390,6 +448,8 @@ export async function runPipeline(
   const budgetCents = toCents('maxBudget', userRequest.maxBudget);
   assertPositiveInteger('groupSize', userRequest.groupSize);
   assertPositiveInteger('roomCount', userRequest.roomCount);
+  const offSeasonWords = findOffSeasonWords(userRequest.preferredTimeframe);
+  if (offSeasonWords.length > 0) throw new OffSeasonError(offSeasonWords);
 
   const previousFailures = [];
   const agentRetries = [];

@@ -4,7 +4,7 @@
 import express from 'express';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { runPipeline } from './src/orchestrator.js';
+import { runPipeline, findOffSeasonWords, OFF_SEASON_MESSAGE } from './src/orchestrator.js';
 import { toCents } from './src/finance.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('./public', import.meta.url));
@@ -14,9 +14,10 @@ const MAX_TIMEFRAME_LENGTH = 60;
 
 // Thrown when the client sends a request the pipeline must not see.
 export class RequestValidationError extends Error {
-  constructor(message) {
+  constructor(message, code = 'invalid_request') {
     super(message);
     this.name = 'RequestValidationError';
+    this.code = code;
   }
 }
 
@@ -58,6 +59,9 @@ export function parsePlanRequest(body) {
       throw new RequestValidationError(`preferredTimeframe must be text of at most ${MAX_TIMEFRAME_LENGTH} characters`);
     }
     if (preferredTimeframe.trim()) request.preferredTimeframe = preferredTimeframe.trim();
+    if (findOffSeasonWords(preferredTimeframe).length > 0) {
+      throw new RequestValidationError(OFF_SEASON_MESSAGE, 'off_season');
+    }
   }
 
   for (const field of SCORE_FIELDS) {
@@ -83,7 +87,7 @@ export function createApp({ llm } = {}) {
       request = parsePlanRequest(req.body);
     } catch (err) {
       if (!(err instanceof RequestValidationError)) throw err;
-      return res.status(400).json({ error: err.message });
+      return res.status(400).json({ error: err.message, code: err.code });
     }
 
     try {
