@@ -74,6 +74,7 @@ POST /api/plan (server.js) → parsePlanRequest: input + seasonal gate (400 befo
 
 ```bash
 npm test          # all verification gates; no API key or network needed
+npm run test:ci   # same gates, plus a JUnit report (test-results.xml); used by .github/workflows/test.yml
 npm start         # web UI at http://localhost:3000
 node run.js       # CLI: one sample request, prints JSON
 ```

@@ -1,0 +1,32 @@
+# Runs the verification gates on every push and pull request, and keeps the
+# results: the job log shows each test, and a JUnit report is stored as an
+# artifact so gate outcomes are recorded per commit.
+name: Verification gates
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # No OPENROUTER_API_KEY is needed: the LLM and network are replaced by scripted fakes.
+      - run: npm run test:ci
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-gates-${{ github.sha }}
+          path: test-results.xml
