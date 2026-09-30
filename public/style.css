@@ -1,54 +1,90 @@
 /* Tokens ------------------------------------------------------------------ */
 
+/* Light: an alpine morning. Deep navy sky fading to icy white over snowy ridges. */
 :root {
-  --snow: #eef2f6;
+  --sky-top: #0c2545;
+  --sky-mid: #2d679f;
+  --sky-low: #a8cdec;
+  --sky-horizon: #eaf3fb;
+  --mountains: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='%23c6dcf1' d='M0 320V190l120-70 90 50 120-100 120 90 110-60 130 80 110-90 130 80 110-60 130 65 120-80 150 65v160z'/%3E%3Cpath fill='%23f3f8fd' d='M0 320v-80l160-70 120 60 140-80 140 85 140-50 160 65 140-75 150 65 150-50 140 40v90z'/%3E%3C/svg%3E");
+
   --surface: #ffffff;
-  --ink: #13233a;
-  --muted: #5a6a7f;
-  --line: #cdd6e1;
-  --piste-blue: #1f5bd6;
-  --piste-red: #c7303c;
-  --stub: #fff4cc;
-  --stub-ink: #3d3100;
+  --glass: rgba(255, 255, 255, 0.64);
+  --glass-border: rgba(255, 255, 255, 0.8);
+  --glass-shadow: 0 24px 60px -28px rgba(6, 28, 58, 0.55);
+  --field: rgba(255, 255, 255, 0.92);
+  --field-border: rgba(15, 35, 64, 0.18);
+
+  --ink: #0f2340;
+  --muted: #475a75;
+  --line: rgba(15, 35, 64, 0.14);
+  --on-sky: #ffffff;
+  --on-sky-muted: rgba(234, 244, 255, 0.88);
+  --ice: #a6dbff;
+
+  --piste-blue: #1a62c4;
+  --piste-red: #c4283a;
+  --stub: #e2f0ff;
+  --stub-ink: #0f2a4d;
   --on-accent: #ffffff;
 
   --font-display: 'Barlow Condensed', 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif;
   --font-body: 'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-data: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
-  --radius: 10px;
+  --radius: 12px;
+  --panel-radius: 18px;
   --gutter: clamp(16px, 4vw, 40px);
 
   color-scheme: light;
 }
 
+/* Dark: the same valley at night. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --snow: #0d1522;
-    --surface: #152033;
-    --ink: #e7eef6;
-    --muted: #93a3b8;
-    --line: #2a3a52;
-    --piste-blue: #74a2ff;
-    --piste-red: #ff6f76;
-    --stub: #2b2410;
-    --stub-ink: #f6e7a8;
-  --on-accent: #0d1522;
+    --sky-top: #02060e;
+    --sky-mid: #0a1a31;
+    --sky-low: #14304f;
+    --sky-horizon: #1c3d63;
+    --mountains: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='%23223f63' d='M0 320V190l120-70 90 50 120-100 120 90 110-60 130 80 110-90 130 80 110-60 130 65 120-80 150 65v160z'/%3E%3Cpath fill='%23305781' d='M0 320v-80l160-70 120 60 140-80 140 85 140-50 160 65 140-75 150 65 150-50 140 40v90z'/%3E%3C/svg%3E");
+    --surface: #10203a;
+    --glass: rgba(12, 24, 44, 0.62);
+    --glass-border: rgba(166, 219, 255, 0.16);
+    --glass-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+    --field: rgba(4, 12, 26, 0.6);
+    --field-border: rgba(166, 219, 255, 0.22);
+    --ink: #e8f0fa;
+    --muted: #a2b4cc;
+    --line: rgba(200, 222, 255, 0.14);
+    --piste-blue: #82baff;
+    --piste-red: #ff7a86;
+    --stub: #132c4b;
+    --stub-ink: #d9ecff;
+    --on-accent: #06101f;
     color-scheme: dark;
   }
 }
 
 :root[data-theme='dark'] {
-  --snow: #0d1522;
-  --surface: #152033;
-  --ink: #e7eef6;
-  --muted: #93a3b8;
-  --line: #2a3a52;
-  --piste-blue: #74a2ff;
-  --piste-red: #ff6f76;
-  --stub: #2b2410;
-  --stub-ink: #f6e7a8;
-  --on-accent: #0d1522;
+  --sky-top: #02060e;
+  --sky-mid: #0a1a31;
+  --sky-low: #14304f;
+  --sky-horizon: #1c3d63;
+  --mountains: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='%23223f63' d='M0 320V190l120-70 90 50 120-100 120 90 110-60 130 80 110-90 130 80 110-60 130 65 120-80 150 65v160z'/%3E%3Cpath fill='%23305781' d='M0 320v-80l160-70 120 60 140-80 140 85 140-50 160 65 140-75 150 65 150-50 140 40v90z'/%3E%3C/svg%3E");
+  --surface: #10203a;
+  --glass: rgba(12, 24, 44, 0.62);
+  --glass-border: rgba(166, 219, 255, 0.16);
+  --glass-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  --field: rgba(4, 12, 26, 0.6);
+  --field-border: rgba(166, 219, 255, 0.22);
+  --ink: #e8f0fa;
+  --muted: #a2b4cc;
+  --line: rgba(200, 222, 255, 0.14);
+  --piste-blue: #82baff;
+  --piste-red: #ff7a86;
+  --stub: #132c4b;
+  --stub-ink: #d9ecff;
+  --on-accent: #06101f;
   color-scheme: dark;
 }
 
@@ -61,11 +97,39 @@
 }
 
 body {
+  min-height: 100vh;
   margin: 0;
-  padding: 0 var(--gutter) 64px;
-  background: var(--snow);
+  padding: 0 var(--gutter) 96px;
+  background:
+    var(--mountains) bottom / 100% 34vh no-repeat fixed,
+    linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 36%, var(--sky-low) 70%, var(--sky-horizon) 100%) fixed;
+  background-color: var(--sky-horizon);
   color: var(--ink);
   font: 400 1rem/1.55 var(--font-body);
+}
+
+/* Frosted-glass panels over the sky */
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--panel-radius);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background: var(--surface);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 :focus-visible {
@@ -94,9 +158,13 @@ body {
   padding-block: clamp(32px, 7vw, 72px) clamp(24px, 4vw, 40px);
 }
 
+.masthead {
+  color: var(--on-sky);
+}
+
 .masthead__eyebrow {
   margin: 0 0 8px;
-  color: var(--piste-blue);
+  color: var(--ice);
   font: 600 0.8rem/1 var(--font-data);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -108,12 +176,13 @@ body {
   font: 800 clamp(2.6rem, 7vw, 4.75rem)/0.92 var(--font-display);
   text-transform: uppercase;
   letter-spacing: -0.01em;
+  text-shadow: 0 2px 24px rgba(0, 12, 30, 0.35);
 }
 
 .masthead__lede {
   max-width: 58ch;
   margin: 20px 0 0;
-  color: var(--muted);
+  color: var(--on-sky-muted);
   font-size: 1.05rem;
 }
 
@@ -151,11 +220,9 @@ body {
 
 /* Form -------------------------------------------------------------------- */
 
-.trip {
-  padding: 24px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+.trip,
+.results {
+  padding: clamp(18px, 3vw, 28px);
 }
 
 .trip__group {
@@ -200,11 +267,15 @@ input[type='number'],
 input[type='text'] {
   width: 100%;
   padding: 10px 12px;
-  background: var(--snow);
+  background: var(--field);
   color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 1px solid var(--field-border);
+  border-radius: 10px;
   font: 500 1rem var(--font-data);
+}
+
+input[type='text'] {
+  font-family: var(--font-body);
 }
 
 .field__money {
@@ -237,8 +308,9 @@ input[type='text'] {
 .segmented {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  background: var(--field);
+  border: 1px solid var(--field-border);
+  border-radius: 10px;
   overflow: hidden;
 }
 
@@ -505,8 +577,8 @@ input[type='range'] {
 
 .chips li {
   padding: 6px 12px;
-  background: var(--snow);
-  border: 1px solid var(--line);
+  background: var(--field);
+  border: 1px solid var(--field-border);
   border-radius: 999px;
   font-size: 0.9rem;
   font-weight: 500;
@@ -515,12 +587,21 @@ input[type='range'] {
 /* The lift ticket --------------------------------------------------------- */
 
 .ticket {
+  --stub-width: 220px;
+  --notch: 10px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) var(--stub-width);
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
+  /* Real cut-outs at both ends of the perforation, so whatever is behind shows through. */
+  -webkit-mask:
+    radial-gradient(circle var(--notch) at calc(100% - var(--stub-width)) 0, #0000 98%, #000) top / 100% 51% no-repeat,
+    radial-gradient(circle var(--notch) at calc(100% - var(--stub-width)) 100%, #0000 98%, #000) bottom / 100% 51% no-repeat;
+  mask:
+    radial-gradient(circle var(--notch) at calc(100% - var(--stub-width)) 0, #0000 98%, #000) top / 100% 51% no-repeat,
+    radial-gradient(circle var(--notch) at calc(100% - var(--stub-width)) 100%, #0000 98%, #000) bottom / 100% 51% no-repeat;
 }
 
 .ticket__main {
@@ -561,8 +642,9 @@ input[type='range'] {
 .dates {
   margin: 0 0 20px;
   padding: 12px 16px;
-  background: var(--snow);
-  border-radius: 8px;
+  background: color-mix(in srgb, var(--piste-blue) 9%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--piste-blue) 22%, transparent);
+  border-radius: 10px;
 }
 
 .dates__label {
@@ -688,25 +770,6 @@ input[type='range'] {
   border-left: 2px dashed color-mix(in srgb, var(--stub-ink) 35%, transparent);
 }
 
-.ticket__stub::before,
-.ticket__stub::after {
-  content: '';
-  position: absolute;
-  left: -11px;
-  width: 20px;
-  height: 20px;
-  background: var(--snow);
-  border-radius: 50%;
-}
-
-.ticket__stub::before {
-  top: -10px;
-}
-
-.ticket__stub::after {
-  bottom: -10px;
-}
-
 .stub__label {
   margin: 0;
   font: 600 0.8rem var(--font-data);
@@ -746,36 +809,35 @@ input[type='range'] {
   font-size: 0.8rem;
 }
 
-@media (max-width: 640px) {
+/* The ticket adapts to the width of the results panel, not the screen. */
+.results {
+  container-type: inline-size;
+}
+
+@container (max-width: 780px) {
   .ticket {
     grid-template-columns: minmax(0, 1fr);
+    -webkit-mask: none;
+    mask: none;
   }
 
   .ticket__stub {
     border-left: 0;
     border-top: 2px dashed color-mix(in srgb, var(--stub-ink) 35%, transparent);
   }
+}
 
-  .ticket__stub::before,
-  .ticket__stub::after {
-    top: -11px;
-    bottom: auto;
-  }
-
-  .ticket__stub::before {
-    left: -10px;
-  }
-
-  .ticket__stub::after {
-    left: auto;
-    right: -10px;
-  }
-
+@container (max-width: 520px) {
   .item {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .item__text {
     grid-column: 1 / -1;
+  }
+
+  .item__price {
+    min-width: 0;
+    white-space: normal;
   }
 }

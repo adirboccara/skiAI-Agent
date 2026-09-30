@@ -175,7 +175,8 @@ function showWarning(title, message) {
   document.getElementById('request-warning-title').textContent = title;
   document.getElementById('request-warning-message').textContent = message;
   warning.hidden = false;
-  warning.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  warning.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
 }
 
 form.addEventListener('submit', async (event) => {
@@ -203,7 +204,8 @@ form.addEventListener('submit', async (event) => {
       show('empty');
       if (body.code === 'off_season') {
         showWarning('Outside the ski season', body.error);
-        form.elements.preferredTimeframe.focus();
+        // preventScroll: a plain focus() would scroll to the field and away from the warning.
+        form.elements.preferredTimeframe.focus({ preventScroll: true });
       } else {
         showWarning('Check your trip details', body.error ?? 'The server rejected the request.');
       }
