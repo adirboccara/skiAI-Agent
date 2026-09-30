@@ -22,7 +22,9 @@ import {
 } from './finance.js';
 
 export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-export const DEFAULT_MODEL = 'meta-llama/llama-3.1-8b-instruct:free';
+// OpenRouter retires free models regularly; override with OPENROUTER_MODEL
+// (in .env) without a code change. The default must support response_format.
+export const DEFAULT_MODEL = 'google/gemma-4-31b-it:free';
 export const MAX_NEGOTIATION_ROUNDS = 3;
 
 // Thrown when the LLM's reply cannot be used (not JSON, or not a valid choice).
@@ -50,7 +52,11 @@ function parseJsonContent(content) {
 // Sends chat messages to OpenRouter and returns the reply parsed as JSON.
 export async function callOpenRouter(
   messages,
-  { apiKey = process.env.OPENROUTER_API_KEY, model = DEFAULT_MODEL, fetchImpl = fetch } = {},
+  {
+    apiKey = process.env.OPENROUTER_API_KEY,
+    model = process.env.OPENROUTER_MODEL || DEFAULT_MODEL,
+    fetchImpl = fetch,
+  } = {},
 ) {
   if (!apiKey) {
     throw new Error('OPENROUTER_API_KEY is not set');

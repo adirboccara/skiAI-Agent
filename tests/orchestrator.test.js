@@ -201,15 +201,14 @@ describe('callOpenRouter', () => {
   test('requests JSON output from the configured model with the bearer key', async () => {
     const fetchImpl = fakeFetch({ content: '{"selected_resort_id":"gudauri"}' });
     const messages = [{ role: 'user', content: 'hi' }];
-    const reply = await callOpenRouter(messages, { apiKey: 'test-key', fetchImpl });
+    const reply = await callOpenRouter(messages, { apiKey: 'test-key', model: DEFAULT_MODEL, fetchImpl });
 
     assert.deepEqual(reply, { selected_resort_id: 'gudauri' });
     const [{ url, init }] = fetchImpl.requests;
     assert.equal(url, OPENROUTER_URL);
     assert.equal(init.headers.Authorization, 'Bearer test-key');
     const sent = JSON.parse(init.body);
-    assert.equal(sent.model, DEFAULT_MODEL);
-    assert.equal(sent.model, 'meta-llama/llama-3.1-8b-instruct:free');
+    assert.equal(sent.model, 'google/gemma-4-31b-it:free');
     assert.deepEqual(sent.response_format, { type: 'json_object' });
     assert.deepEqual(sent.messages, messages);
   });
