@@ -24,6 +24,8 @@ It was written on 2026-09-30, after the last feature commit (`85a1023`), from th
 | 12 | `3da0381` | Seasonal gate, structured reasoning | Scope expansion |
 | 13 | `eea9d6a` | March/April snow weeks, date-shift acknowledgement | UI test: "April" returned "Late February" |
 | 14 | `85a1023` | Winter theme, error auto-scroll fix | UX report: error box not visible |
+| 15 | `cd2eea4` | framing.md aligned with the build, prompt log, CI | Self-audit against the grading criteria |
+| 16 | this commit | [Live run evidence](docs/live-run-evidence.md) | Live run on the final code |
 
 ## Architectural decisions
 
@@ -112,7 +114,7 @@ Option 2 is more robust, but the agent would never experience a budget failure, 
 
 **Decision.** Option 1: `MAX_NEGOTIATION_ROUNDS = RESORTS.length`, which is 6 (`7b9b8d3`).
 
-**Evidence.** A test scripts Ischgl, Val Thorens and Mayrhofen before Gudauri. It returns the fallback with 3 rounds and succeeds in round 4 with 6.
+**Evidence.** A test scripts Ischgl, Val Thorens and Mayrhofen before Gudauri. It returns the fallback with 3 rounds and succeeds in round 4 with 6. The live run on the final code then did exactly this, unscripted: Val Thorens, Mayrhofen and Ischgl were each blocked by the budget gate, and the agent pivoted to Gudauri in round 4 ([docs/live-run-evidence.md](docs/live-run-evidence.md)).
 
 **Cost.** Up to 6 LLM calls per run, or 18 in the worst case with retries.
 
@@ -170,11 +172,13 @@ These are the weaknesses in how the project was run, recorded so they are not re
 1. **The specification drifted.** [framing.md](framing.md) still describes six agents, including a Summary Agent, and treats travel dates as a hard constraint. It does not mention the web UI, date recommendation, the seasonal gate or the booking links. Features were added in Steps 9–14 without updating the framing first. [CLAUDE.md](CLAUDE.md) had the same drift until it was rewritten alongside this file.
 2. **Test-first held only at the start.** Steps 3–4 are a genuine red → green sequence. From Step 5 on, tests landed in the same commit as the code, so the history cannot show they were written first.
 3. **Some commits are not atomic.** `51a2092` combines three features (destinations, dates, booking UI), as its own message says. `c470b8e` and later feature commits also carry README updates. `0ba76fc` says "finalize project for submission", but six feature commits follow it.
-4. **Gate results are not persisted.** The suite is reproducible with `npm test`, but there is no CI and no recorded test output per commit. The one live run is documented only in this file (decision 4), and no live run has been made since the retry loop, dates, reasoning or seasonal gate were added.
+4. **Gate results were not persisted until late.** Until Step 15 the suite was reproducible with `npm test`, but there was no CI and no recorded test output per commit. Live runs had no record either: the first (Step 6.1) is documented only in this file (decision 4). *Addressed:*
+   - Step 15 added a CI workflow that stores a JUnit report per commit. It records nothing until the repository is pushed to GitHub.
+   - Step 16 recorded a live run on the final code in [docs/live-run-evidence.md](docs/live-run-evidence.md), verified by recomputing every total and replaying the agent's choices through the gates.
 5. **Lessons were written at the end.** This file was reconstructed after the fact. A running log, updated when each failure happened, would be stronger evidence.
 
 ## Open risks
 
-- No live LLM run since Step 6.1. The stricter reply format may raise the retry rate on free models.
+- One live run on the final code ([docs/live-run-evidence.md](docs/live-run-evidence.md)) needed zero retries under the stricter reply format. One run is not a retry rate, and it produced no constraint failure, so the constraint gate is verified only by the automated suite.
 - A negotiation of up to 6 rounds × 3 attempts on a slow free model may take longer than the "up to a minute" the UI promises.
 - Travel dates, and proximity to the town centre and gondola, are not modelled as data. Dates are recommended as periods ("Early February"), not calendar dates, and prices do not vary by week.

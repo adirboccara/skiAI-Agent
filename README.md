@@ -137,6 +137,7 @@ This sends a fixed sample request (€2,200 budget, 2 people, 1 room, ski-in/ski
 ├── CLAUDE.md                   Agent context: rules, architecture, agent charge sheets, commands
 ├── lessons-learned.md          Architectural decisions, what triggered them, and process lessons
 ├── docs/prompt-log.md          Instructions given to the coding agent, step by step, with pushbacks
+├── docs/live-run-evidence.md   A verified live run: three budget rejections, then Gudauri in round 4
 ├── .github/workflows/test.yml  CI: runs the gates on every push and stores a JUnit report
 ├── server.js                   Express server: web UI + POST /api/plan (npm start)
 ├── run.js                      CLI entry point (node run.js)
