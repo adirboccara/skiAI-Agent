@@ -1,0 +1,128 @@
+# Multi-Agent Ski Vacation Planner
+
+A multi-agent system that turns a structured ski-trip request (budget, group size, ski-in/ski-out, vibe, nightlife, ski area size) into a vacation package that is **verified to fit the budget and the hard constraints**. If no such package exists, it returns a deterministic explanation of the bottleneck instead of an invented one.
+
+Built for the *Agentic Software Engineering* course. The scope and the Definition of Done are defined in [framing.md](framing.md); the engineering rules the project follows are in [CLAUDE.md](CLAUDE.md).
+
+## Core Philosophy: Verification over Trust
+
+A single LLM prompt fails at trip planning because it produces plausible-looking prices and links that come from no real source, and it cannot reliably notice when the budget and the user's demands conflict. This project therefore splits the work by what each part can be trusted with:
+
+| Responsibility | Handled by | Why |
+|---|---|---|
+| Choosing a resort that fits the vibe, nightlife, crowd and terrain preferences | **LLM** (Destination Agent) | Qualitative judgment is what LLMs are good at |
+| Prices, links and resort facts | **Tools** ([src/tools/mocks.js](src/tools/mocks.js)) | The Ground Truth source; every record carries `source: 'mock'` |
+| Hard constraints (ski-in/ski-out) | **Code** (`validateConstraints` in [src/finance.js](src/finance.js)) | Must be exact; missing data counts as a violation |
+| Budget arithmetic | **Code** (`calculateTotal` in [src/finance.js](src/finance.js)) | Computed in integer cents, so there are no floating-point errors |
+| Hotel choice within a resort | **Code** (closest to the requested level that fits the budget) | Depends on prices, so it must not be guessed |
+| The fallback message when nothing fits | **Code** | Names the real bottleneck; never a hallucinated package |
+
+The LLM never sees the budget or any price and never does arithmetic. It only picks a resort ID from the list it is offered, and an ID outside that list is rejected. Its free-text reasoning is returned as `destinationReasoning` for transparency but is never used as a fact.
+
+The Flight, Accommodation, Gear & Pass and Budget & Negotiation agents are deliberately **deterministic tool calls and code, not LLM prompts**, so that no financial value can be hallucinated.
+
+> **Note on data:** all prices, resort statistics and hotels are fixed, illustrative mock data, and all links point to `example.com`. They are not real offers.
+
+## The Dual-Loop Architecture
+
+```
+runPipeline(userRequest)
+│
+├── Outer loop: Business Negotiation (up to 3 rounds)
+│   │
+│   ├── 1. Destination Agent (LLM) picks a resort
+│   │      └── Inner loop: API Resilience (1 attempt + up to 2 retries, same round)
+│   │
+│   ├── 2. Tools fetch resort data, flight, hotels, ski pass and gear prices
+│   │
+│   ├── 3. Verification Gates
+│   │      ├── validateConstraints → fail: record the bottleneck, next round
+│   │      └── calculateTotal ≤ maxBudget → fail: record the exact overrun, next round
+│   │
+│   └── Both gates pass → return the proposal
+│
+└── All rounds failed → deterministic fallback: the bottlenecks + what to compromise on
+```
+
+**Outer loop: Business Negotiation.** Each round, the Destination Agent chooses from the resorts that have not failed yet and receives the list of earlier failures, for example *"Val Thorens: cheapest package meeting the hard constraints costs €4060, but the budget is €2200 (over by €1860)"*. A round is used up only by a real business result: a constraint or budget failure.
+
+**Inner loop: API Resilience.** An empty reply, malformed JSON, an unknown resort ID, an HTTP 429 or 5xx response, or a network error is retried within the same round, with a backoff of 1 s and then 2 s. These errors never use up a negotiation round.
+- If the model's output is still unusable after 3 attempts, the round is used up and recorded.
+- If the API is still failing after 3 attempts, the run stops with a fatal error. An outage is not a budget problem, so the pipeline does not send a misleading "compromise" message.
+- Non-transient errors (a missing key, 401, 404) stop the run immediately.
+
+Every retry is logged in the result's `agentRetries` field, separately from the negotiation failures.
+
+## Getting Started
+
+### Prerequisites
+
+- **Node.js 21.7 or later** (developed on Node 24). The project uses the native `fetch`, `node:test` and `process.loadEnvFile()`.
+- An [OpenRouter](https://openrouter.ai) API key. It is needed only for the live run, not for the tests.
+
+### 1. Install
+
+The project has **zero runtime or development dependencies**, so there is nothing to install. Running `npm install` is harmless if your workflow expects it.
+
+### 2. Configure
+
+Copy the template and add your OpenRouter API key:
+
+```bash
+cp .env.example .env        # macOS / Linux / Git Bash
+copy .env.example .env      # Windows cmd / PowerShell
+```
+
+```ini
+OPENROUTER_API_KEY=your_key_here
+# Optional: override the default model (must be a free model that supports response_format)
+# OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+```
+
+`.env` is git-ignored. The default model is `nvidia/nemotron-3-super-120b-a12b:free`. OpenRouter retires free models regularly; if the run fails with a 404, set `OPENROUTER_MODEL` to another free model that supports `response_format`.
+
+### 3. Run the Verification Gates
+
+```bash
+npm test
+```
+
+This runs the suite of **49 deterministic tests**. It needs no API key and no network access: the LLM and the network are replaced by scripted fakes. The suite covers:
+
+- **Budget integrity:** exact totals from unit prices × group size and room count, including cent-precision and floating-point cases.
+- **Input validation:** missing, negative, non-numeric and sub-cent prices, and invalid group or room counts, are rejected instead of guessed.
+- **Hard constraints:** ski-in/ski-out on both the resort and the hotel; missing data counts as a violation.
+- **Traceability:** every price and link in a proposal is checked to equal a Ground Truth tool result.
+- **Negotiation:** constraint and budget failures, feedback to the next round, and no re-offering of failed resorts.
+- **Fallback:** infeasible requests produce the deterministic fallback, never a package.
+- **Resilience:** retries within a round, fatal errors for persistent outages, and immediate failure on 401/404.
+
+### 4. Run the Live Pipeline
+
+```bash
+npm start
+```
+
+This runs [run.js](run.js), which sends a sample request (€2,200 budget, 2 people, 1 room, ski-in/ski-out required, young/party vibe) through the pipeline and prints the result as JSON: either a `"status": "success"` proposal or a `"status": "fallback"` explanation. With the mock data, the expected outcome is **Gudauri at €1,770**: Val Thorens is blocked on budget and La Molina on ski-in/ski-out. The order in which the agent tries them can vary from run to run.
+
+## Project Structure
+
+```
+├── framing.md                  Problem statement, Definition of Done, out of scope
+├── CLAUDE.md                   Engineering rules for the agentic workflow
+├── run.js                      CLI entry point (npm start)
+├── src/
+│   ├── orchestrator.js         OpenRouter client, Destination Agent, dual-loop pipeline, fallback
+│   ├── finance.js              calculateTotal, validateConstraints, cents handling
+│   └── tools/mocks.js          Ground Truth mock tools: resorts, flights, hotels, passes, gear
+└── tests/
+    ├── verification.test.js    Finance and constraint gates
+    └── orchestrator.test.js    Pipeline, negotiation, fallback and resilience tests
+```
+
+## Scope and Limitations
+
+- **Read-only:** the system proposes options with links but never books or pays for anything.
+- **Mock data only:** three resorts with fixed prices. Prices are valid only at query time; there is no live pricing.
+- **Not handled:** travel visas, medical insurance and extreme sports coverage.
+- **Preferences not yet used:** the user request currently supports budget, group size, rooms, ski-in/ski-out, accommodation level, vibe, nightlife, ski area size and crowd tolerance. Proximity to the town center and to the gondola, and travel dates, are not used yet, because the mock data has no values for them and the agents must not invent any.
