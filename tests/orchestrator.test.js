@@ -5,6 +5,7 @@ import {
   runPipeline,
   callOpenRouter,
   LlmResponseError,
+  OpenRouterHttpError,
   DEFAULT_MODEL,
   OPENROUTER_URL,
 } from '../src/orchestrator.js';
@@ -123,13 +124,15 @@ describe('runPipeline: negotiation loop', () => {
     assert.match(failure.message, /Val Thorens: .*costs €2960, but the budget is €2000 \(over by €960\)/);
   });
 
-  test('an unknown resort id from the LLM counts as a failed round, not a crash', async () => {
+  test('an unknown resort id from the LLM is retried within the same round', async () => {
     const llm = scriptedLlm([pick('chamonix'), pick('gudauri')]);
-    const result = await runPipeline(baseRequest, { llm });
+    const result = await runPipeline(baseRequest, { llm, retryDelayMs: 0 });
 
     assert.equal(result.status, 'success');
-    assert.equal(result.previousFailures[0].type, 'invalid_agent_output');
-    assert.match(result.previousFailures[0].message, /chamonix/);
+    assert.equal(result.negotiationRounds, 1);
+    assert.deepEqual(result.previousFailures, []);
+    assert.equal(result.agentRetries.length, 1);
+    assert.match(result.agentRetries[0].message, /chamonix/);
   });
 
   test('does not send the budget to the Destination Agent', async () => {
@@ -156,13 +159,16 @@ describe('runPipeline: deterministic fallback', () => {
     assert.equal(result.total, undefined, 'a fallback must not contain a package total');
   });
 
-  test('when the LLM never returns a usable choice, still falls back deterministically', async () => {
-    const llm = scriptedLlm([{}, { selected_resort_id: 'nowhere' }, pick('')]);
-    const result = await runPipeline(baseRequest, { llm });
+  test('when the LLM never returns a usable choice, exhausts retries per round and falls back', async () => {
+    // 3 rounds x (1 attempt + 2 retries) = 9 unusable replies.
+    const llm = scriptedLlm(Array.from({ length: 9 }, (_, i) => [{}, { selected_resort_id: 'nowhere' }, pick('')][i % 3]));
+    const result = await runPipeline(baseRequest, { llm, retryDelayMs: 0 });
 
     assert.equal(result.status, 'fallback');
+    assert.equal(llm.calls.length, 9);
     assert.equal(result.bottlenecks.length, 3);
     assert.ok(result.bottlenecks.every((b) => b.type === 'invalid_agent_output'));
+    assert.ok(result.bottlenecks.every((b) => /after 3 attempts/.test(b.message)));
   });
 
   test('rejects a malformed request before calling the LLM', async () => {
@@ -170,6 +176,96 @@ describe('runPipeline: deterministic fallback', () => {
       const llm = scriptedLlm([]);
       await assert.rejects(runPipeline({ ...baseRequest, ...bad }, { llm }));
       assert.equal(llm.calls.length, 0);
+    }
+  });
+});
+
+describe('runPipeline: inner retry loop (API/format failures do not consume negotiation rounds)', () => {
+  // A fake fetch that plays back one response per call: { status, content } or { networkError }.
+  function sequenceFetch(responses) {
+    const requests = [];
+    const impl = async () => {
+      const next = responses[requests.length];
+      requests.push(next);
+      if (!next) throw new Error(`unexpected fetch call #${requests.length}`);
+      if (next.networkError) throw new TypeError('fetch failed');
+      const status = next.status ?? 200;
+      const payload = next.body ?? { choices: [{ message: { content: next.content } }] };
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        json: async () => payload,
+        text: async () => JSON.stringify(payload),
+      };
+    };
+    impl.requests = requests;
+    return impl;
+  }
+
+  // Runs the real callOpenRouter against the fake fetch.
+  const llmVia = (fetchImpl) => (messages) => callOpenRouter(messages, { apiKey: 'k', fetchImpl });
+  const gudauriJson = JSON.stringify(pick('gudauri'));
+
+  test('an empty reply followed by a valid one succeeds in round 1', async () => {
+    const fetchImpl = sequenceFetch([{ content: null }, { content: gudauriJson }]);
+    const result = await runPipeline(baseRequest, { llm: llmVia(fetchImpl), retryDelayMs: 0 });
+
+    assert.equal(result.status, 'success');
+    assert.equal(result.resort.id, 'gudauri');
+    assert.equal(result.negotiationRounds, 1, 'the empty reply must not consume a negotiation round');
+    assert.deepEqual(result.previousFailures, []);
+    assert.equal(fetchImpl.requests.length, 2);
+    assert.deepEqual(result.agentRetries, [
+      { round: 1, attempt: 1, message: 'OpenRouter response contained no message content' },
+    ]);
+  });
+
+  test('malformed JSON, a 429 and a network error are each retried', async () => {
+    for (const failure of [{ content: 'not json' }, { status: 429, body: { error: 'rate limited' } }, { networkError: true }]) {
+      const fetchImpl = sequenceFetch([failure, { content: gudauriJson }]);
+      const result = await runPipeline(baseRequest, { llm: llmVia(fetchImpl), retryDelayMs: 0 });
+
+      assert.equal(result.status, 'success');
+      assert.equal(result.negotiationRounds, 1);
+      assert.equal(fetchImpl.requests.length, 2);
+    }
+  });
+
+  test('retries do not hide a real negotiation failure in a later round', async () => {
+    // Round 1: empty, then La Molina (fails ski-in/ski-out). Round 2: Gudauri.
+    const fetchImpl = sequenceFetch([
+      { content: '' },
+      { content: JSON.stringify(pick('la-molina')) },
+      { content: gudauriJson },
+    ]);
+    const result = await runPipeline(baseRequest, { llm: llmVia(fetchImpl), retryDelayMs: 0 });
+
+    assert.equal(result.status, 'success');
+    assert.equal(result.negotiationRounds, 2);
+    assert.equal(result.previousFailures.length, 1);
+    assert.equal(result.previousFailures[0].resortId, 'la-molina');
+  });
+
+  test('persistent transient API errors are fatal after the retries, not a fake budget bottleneck', async () => {
+    const rateLimited = { status: 429, body: { error: 'rate limited' } };
+    const fetchImpl = sequenceFetch([rateLimited, rateLimited, rateLimited]);
+
+    await assert.rejects(
+      runPipeline(baseRequest, { llm: llmVia(fetchImpl), retryDelayMs: 0 }),
+      (err) => {
+        assert.match(err.message, /Destination Agent unavailable after 3 attempts/);
+        assert.ok(err.cause instanceof OpenRouterHttpError);
+        return true;
+      },
+    );
+    assert.equal(fetchImpl.requests.length, 3);
+  });
+
+  test('non-transient API errors (401, 404) fail immediately without retrying', async () => {
+    for (const status of [401, 404]) {
+      const fetchImpl = sequenceFetch([{ status, body: { error: 'nope' } }]);
+      await assert.rejects(runPipeline(baseRequest, { llm: llmVia(fetchImpl), retryDelayMs: 0 }), OpenRouterHttpError);
+      assert.equal(fetchImpl.requests.length, 1);
     }
   });
 });
@@ -208,7 +304,7 @@ describe('callOpenRouter', () => {
     assert.equal(url, OPENROUTER_URL);
     assert.equal(init.headers.Authorization, 'Bearer test-key');
     const sent = JSON.parse(init.body);
-    assert.equal(sent.model, 'google/gemma-4-31b-it:free');
+    assert.equal(sent.model, 'nvidia/nemotron-3-super-120b-a12b:free');
     assert.deepEqual(sent.response_format, { type: 'json_object' });
     assert.deepEqual(sent.messages, messages);
   });

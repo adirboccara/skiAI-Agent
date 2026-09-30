@@ -4,6 +4,7 @@
 // Truth tools, and every affordability decision is made by the deterministic
 // gates in finance.js. If negotiation fails, the fallback is built in code.
 
+import { setTimeout as sleep } from 'node:timers/promises';
 import {
   RESORTS,
   getResort,
@@ -24,15 +25,45 @@ import {
 export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 // OpenRouter retires free models regularly; override with OPENROUTER_MODEL
 // (in .env) without a code change. The default must support response_format.
-export const DEFAULT_MODEL = 'google/gemma-4-31b-it:free';
+export const DEFAULT_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
 export const MAX_NEGOTIATION_ROUNDS = 3;
+// Extra Destination Agent attempts within one round. API/format flakiness is
+// retried here so it does not consume a negotiation round.
+export const MAX_AGENT_RETRIES = 2;
+export const DEFAULT_RETRY_DELAY_MS = 1000;
 
-// Thrown when the LLM's reply cannot be used (not JSON, or not a valid choice).
+// Thrown when the LLM's reply cannot be used (empty, not JSON, or not a valid choice).
 export class LlmResponseError extends Error {
   constructor(message) {
     super(message);
     this.name = 'LlmResponseError';
   }
+}
+
+// Thrown when OpenRouter answers with a non-2xx status.
+export class OpenRouterHttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.name = 'OpenRouterHttpError';
+    this.status = status;
+  }
+}
+
+// Thrown when the request to OpenRouter fails before any response arrives.
+export class OpenRouterNetworkError extends Error {
+  constructor(message, options) {
+    super(message, options);
+    this.name = 'OpenRouterNetworkError';
+  }
+}
+
+// Rate limits, server errors and network failures may succeed on retry;
+// auth errors, unknown models and bad requests will not.
+function isTransientApiError(err) {
+  return (
+    err instanceof OpenRouterNetworkError ||
+    (err instanceof OpenRouterHttpError && (err.status === 429 || err.status >= 500))
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -62,28 +93,36 @@ export async function callOpenRouter(
     throw new Error('OPENROUTER_API_KEY is not set');
   }
 
-  const response = await fetchImpl(OPENROUTER_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      response_format: { type: 'json_object' },
-      temperature: 0,
-    }),
-  });
+  let response;
+  try {
+    response = await fetchImpl(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        response_format: { type: 'json_object' },
+        temperature: 0,
+      }),
+    });
+  } catch (err) {
+    throw new OpenRouterNetworkError(`OpenRouter request failed: ${err.message}`, { cause: err });
+  }
 
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    throw new Error(`OpenRouter request failed with status ${response.status}: ${body.slice(0, 500)}`);
+    throw new OpenRouterHttpError(
+      response.status,
+      `OpenRouter request failed with status ${response.status}: ${body.slice(0, 500)}`,
+    );
   }
 
   const data = await response.json();
   const content = data?.choices?.[0]?.message?.content;
-  if (typeof content !== 'string') {
+  if (typeof content !== 'string' || content.trim() === '') {
     throw new LlmResponseError('OpenRouter response contained no message content');
   }
   return parseJsonContent(content);
@@ -272,15 +311,49 @@ function buildFallback(userRequest, previousFailures) {
 // Pipeline
 // ---------------------------------------------------------------------------
 
+// Calls the Destination Agent, retrying API/format failures within the same
+// negotiation round. Returns { choice } on success, or { error } when the LLM
+// kept returning unusable output (the caller then consumes the round). Throws
+// on non-transient API errors, or when transient API errors outlast the
+// retries: an unreachable API is a system failure, not a budget bottleneck.
+async function chooseDestinationWithRetry(round, preferences, resorts, previousFailures, options) {
+  const { llm, maxRetries, retryDelayMs, retryLog } = options;
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return { choice: await destinationAgent(preferences, resorts, previousFailures, { llm }) };
+    } catch (err) {
+      const isBadOutput = err instanceof LlmResponseError;
+      if (!isBadOutput && !isTransientApiError(err)) throw err;
+
+      retryLog.push({ round, attempt, message: err.message });
+      if (attempt > maxRetries) {
+        if (isBadOutput) return { error: err, attempts: attempt };
+        throw new Error(`Destination Agent unavailable after ${attempt} attempts: ${err.message}`, { cause: err });
+      }
+      if (retryDelayMs > 0) await sleep(retryDelayMs * attempt);
+    }
+  }
+}
+
 // Runs the negotiation loop: Destination Agent -> tools -> gates, up to
 // maxRounds times. Returns a success proposal or the deterministic fallback.
-export async function runPipeline(userRequest, { llm = callOpenRouter, maxRounds = MAX_NEGOTIATION_ROUNDS } = {}) {
+export async function runPipeline(
+  userRequest,
+  {
+    llm = callOpenRouter,
+    maxRounds = MAX_NEGOTIATION_ROUNDS,
+    maxRetries = MAX_AGENT_RETRIES,
+    retryDelayMs = DEFAULT_RETRY_DELAY_MS,
+  } = {},
+) {
   // Reject malformed requests before spending any LLM calls.
   const budgetCents = toCents('maxBudget', userRequest.maxBudget);
   assertPositiveInteger('groupSize', userRequest.groupSize);
   assertPositiveInteger('roomCount', userRequest.roomCount);
 
   const previousFailures = [];
+  const agentRetries = [];
   const triedResortIds = new Set();
 
   for (let round = 1; round <= maxRounds; round++) {
@@ -288,18 +361,20 @@ export async function runPipeline(userRequest, { llm = callOpenRouter, maxRounds
     const availableResorts = RESORTS.filter((resort) => !triedResortIds.has(resort.id));
     if (availableResorts.length === 0) break;
 
-    // Phase 1: Destination Agent.
-    let choice;
-    try {
-      choice = await destinationAgent(
-        userRequest,
-        availableResorts,
-        previousFailures.map((failure) => failure.message),
-        { llm },
-      );
-    } catch (err) {
-      if (!(err instanceof LlmResponseError)) throw err;
-      previousFailures.push({ round, type: 'invalid_agent_output', message: err.message });
+    // Phase 1: Destination Agent (with inner retries).
+    const { choice, error, attempts } = await chooseDestinationWithRetry(
+      round,
+      userRequest,
+      availableResorts,
+      previousFailures.map((failure) => failure.message),
+      { llm, maxRetries, retryDelayMs, retryLog: agentRetries },
+    );
+    if (error) {
+      previousFailures.push({
+        round,
+        type: 'invalid_agent_output',
+        message: `${error.message} (after ${attempts} attempts)`,
+      });
       continue;
     }
     triedResortIds.add(choice.selectedResortId);
@@ -314,10 +389,11 @@ export async function runPipeline(userRequest, { llm = callOpenRouter, maxRounds
         destinationReasoning: choice.reasoning,
         negotiationRounds: round,
         previousFailures,
+        agentRetries,
       };
     }
     previousFailures.push({ round, ...result.failure });
   }
 
-  return buildFallback(userRequest, previousFailures);
+  return { ...buildFallback(userRequest, previousFailures), agentRetries };
 }
